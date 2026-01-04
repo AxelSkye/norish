@@ -13,10 +13,13 @@ import {
   ModalFooter,
 } from "@heroui/react";
 import { TrashIcon } from "@heroicons/react/24/outline";
+import { useTranslations } from "next-intl";
 
 import { useUserSettingsContext } from "../context";
 
 export default function DangerZoneCard() {
+  const t = useTranslations("settings.user.dangerZone");
+  const tActions = useTranslations("common.actions");
   const { deleteAccount } = useUserSettingsContext();
   const [showAccountDeleteModal, setShowAccountDeleteModal] = useState(false);
 
@@ -28,12 +31,10 @@ export default function DangerZoneCard() {
     <>
       <Card className="border-danger-200 dark:border-danger-900">
         <CardHeader>
-          <h2 className="text-danger text-lg font-semibold">Danger Zone</h2>
+          <h2 className="text-danger text-lg font-semibold">{t("title")}</h2>
         </CardHeader>
         <CardBody className="gap-4">
-          <p className="text-default-600 text-base">
-            Once you delete your account, there is no going back. Please be certain.
-          </p>
+          <p className="text-default-600 text-base">{t("description")}</p>
           <div className="flex justify-end">
             <Button
               color="danger"
@@ -41,7 +42,7 @@ export default function DangerZoneCard() {
               variant="flat"
               onPress={() => setShowAccountDeleteModal(true)}
             >
-              Delete My Account
+              {t("deleteButton")}
             </Button>
           </div>
         </CardBody>
@@ -52,30 +53,21 @@ export default function DangerZoneCard() {
         <ModalContent>
           {(onClose) => (
             <>
-              <ModalHeader className="text-danger">Delete Account</ModalHeader>
+              <ModalHeader className="text-danger">{t("deleteModal.title")}</ModalHeader>
               <ModalBody>
                 <p className="text-danger mb-2 font-semibold">
-                  This action is permanent and cannot be undone!
+                  {t("deleteModal.permanentWarning")}
                 </p>
-                <p>
-                  Your personal data including groceries, calendar entries, and notes will be
-                  permanently deleted.
-                </p>
-                <p className="mt-2">
-                  Recipes you created will be preserved but will no longer be linked to your
-                  account.
-                </p>
-                <p className="mt-2">
-                  If you are the admin of a household with other members, you must transfer admin
-                  privileges first.
-                </p>
+                <p>{t("deleteModal.dataWarning")}</p>
+                <p className="mt-2">{t("deleteModal.recipesNote")}</p>
+                <p className="mt-2">{t("deleteModal.adminNote")}</p>
               </ModalBody>
               <ModalFooter>
                 <Button variant="flat" onPress={onClose}>
-                  Cancel
+                  {tActions("cancel")}
                 </Button>
                 <Button color="danger" onPress={handleDeleteAccount}>
-                  Delete My Account
+                  {t("deleteModal.confirmButton")}
                 </Button>
               </ModalFooter>
             </>

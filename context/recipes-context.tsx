@@ -15,8 +15,10 @@ type Ctx = {
   recipes: RecipeDashboardDTO[];
   total: number;
   isLoading: boolean;
+  isFetchingMore: boolean;
   hasMore: boolean;
   pendingRecipeIds: Set<string>;
+  autoTaggingRecipeIds: Set<string>;
 
   // Actions (all void - fire and forget)
   loadMore: () => void;
@@ -40,6 +42,7 @@ export function RecipesContextProvider({ children }: { children: ReactNode }) {
   const queryFilters = useMemo(
     () => ({
       search: filters.rawInput || undefined,
+      searchFields: filters.searchFields,
       tags: filters.searchTags.length > 0 ? filters.searchTags : undefined,
       filterMode: filters.filterMode as "AND" | "OR",
       sortMode: filters.sortMode as "titleAsc" | "titleDesc" | "dateAsc" | "dateDesc",
@@ -52,9 +55,11 @@ export function RecipesContextProvider({ children }: { children: ReactNode }) {
     recipes: allRecipes,
     total: serverTotal,
     isLoading,
+    isValidating,
     hasMore,
     loadMore,
     pendingRecipeIds,
+    autoTaggingRecipeIds,
     invalidate,
   } = useRecipesQuery(queryFilters);
 
@@ -137,8 +142,10 @@ export function RecipesContextProvider({ children }: { children: ReactNode }) {
       recipes,
       total,
       isLoading: isLoading || isFavoritesLoading,
+      isFetchingMore: isValidating && !isLoading,
       hasMore,
       pendingRecipeIds,
+      autoTaggingRecipeIds,
       loadMore,
       importRecipe,
       importRecipeWithAI,
@@ -151,9 +158,11 @@ export function RecipesContextProvider({ children }: { children: ReactNode }) {
       recipes,
       total,
       isLoading,
+      isValidating,
       isFavoritesLoading,
       hasMore,
       pendingRecipeIds,
+      autoTaggingRecipeIds,
       loadMore,
       importRecipe,
       importRecipeWithAI,

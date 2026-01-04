@@ -142,7 +142,10 @@ export function createMockGrocery(overrides: Partial<GroceryDto> = {}): GroceryD
     amount: 1,
     unit: "piece",
     isDone: false,
+    recipeIngredientId: null,
     recurringGroceryId: null,
+    storeId: null,
+    sortOrder: 0,
     ...overrides,
   };
 }
@@ -174,5 +177,5 @@ export function createMockGroceriesData(
   groceries: GroceryDto[] = [],
   recurringGroceries: RecurringGroceryDto[] = []
 ): GroceriesData {
-  return { groceries, recurringGroceries };
+  return { groceries, recurringGroceries, recipeMap: {} };
 }

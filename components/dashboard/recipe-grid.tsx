@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useMemo, useCallback, useState, useEffect, useRef } from "react";
-import { VirtuosoGrid } from "react-virtuoso";
+import { VirtuosoGrid, VirtuosoGridHandle } from "react-virtuoso";
+import { Spinner } from "@heroui/react";
 
 import RecipeCardSkeleton from "../skeleton/recipe-card-skeleton";
 import RecipeGridSkeleton from "../skeleton/recipe-grid-skeleton";
@@ -28,17 +29,54 @@ const ItemComponent = React.memo((props: React.HTMLProps<HTMLDivElement>) => (
 
 ItemComponent.displayName = "ItemComponent";
 
-const gridComponents = { List: ListComponent, Item: ItemComponent };
+// Placeholder shown during fast scrolling to reduce flicker
+const ScrollSeekPlaceholder = React.memo(() => (
+  <div className="w-full sm:w-[calc(50%-0.5rem)] lg:w-[calc(25%-0.75rem)]">
+    <RecipeCardSkeleton />
+  </div>
+));
+
+ScrollSeekPlaceholder.displayName = "ScrollSeekPlaceholder";
+
+const gridComponents = {
+  List: ListComponent,
+  Item: ItemComponent,
+  ScrollSeekPlaceholder,
+};
+
+// Scroll seek configuration: show placeholders during fast scrolling
+// Enter when velocity > 800px/s, exit when velocity < 200px/s
+const scrollSeekConfiguration = {
+  enter: (velocity: number) => Math.abs(velocity) > 800,
+  exit: (velocity: number) => Math.abs(velocity) < 200,
+};
 
 export default function RecipeGrid() {
-  const { recipes, isLoading, hasMore: _hasMore, loadMore, pendingRecipeIds } = useRecipesContext();
+  const {
+    recipes,
+    isLoading,
+    isFetchingMore,
+    hasMore: _hasMore,
+    loadMore,
+    pendingRecipeIds,
+  } = useRecipesContext();
   const { filters, clearFilters } = useRecipesFiltersContext();
   const { saveScrollState, getScrollState } = useScrollRestoration(filters);
 
   const [showSkeleton, setShowSkeleton] = useState(false);
   const [isLoadedOnce, setIsLoadedOnce] = useState(false);
-  const virtuosoRef = useRef<any>(null);
+  const virtuosoRef = useRef<VirtuosoGridHandle>(null);
   const prevFiltersRef = useRef(filters);
+  const isRestoringScrollRef = useRef(false);
+
+  const displayData = useMemo(() => {
+    const pendingSkeletons = Array.from(pendingRecipeIds).map((id) => ({
+      id,
+      isLoading: true,
+    }));
+
+    return [...pendingSkeletons, ...recipes];
+  }, [pendingRecipeIds, recipes]);
 
   // Get initial scroll index from saved state
   const initialTopMostItemIndex = useMemo(() => {
@@ -54,10 +92,16 @@ export default function RecipeGrid() {
     const savedState = getScrollState();
 
     if (savedState?.scrollTop && savedState.scrollTop > 0) {
+      // Mark as restoring to prevent rangeChanged from overwriting saved state
+      isRestoringScrollRef.current = true;
       // Wait for Virtuoso to fully render before restoring scroll
       requestAnimationFrame(() => {
         setTimeout(() => {
           window.scrollTo(0, savedState.scrollTop);
+          // Allow scroll state to settle before enabling saves again
+          setTimeout(() => {
+            isRestoringScrollRef.current = false;
+          }, 200);
         }, 50);
       });
     }
@@ -69,15 +113,6 @@ export default function RecipeGrid() {
   useEffect(() => {
     prevFiltersRef.current = filters;
   }, [filters]);
-
-  const displayData = useMemo(() => {
-    const pendingSkeletons = Array.from(pendingRecipeIds).map((id) => ({
-      id,
-      isLoading: true,
-    }));
-
-    return [...pendingSkeletons, ...recipes];
-  }, [pendingRecipeIds, recipes]);
 
   const hasAppliedFilters = useMemo(() => {
     const hasSearch = filters.rawInput.trim().length > 0;
@@ -98,20 +133,19 @@ export default function RecipeGrid() {
     []
   );
 
-  // Stable item keys to prevent re-renders
-  const computeItemKey = useCallback(
-    (index: number) => {
-      const item = displayData[index];
-
-      return item?.id ?? `item-${index}`;
-    },
-    [displayData]
-  );
+  // Stable item keys using item.id - this is called with the actual item data
+  // IMPORTANT: Don't depend on displayData in this callback to prevent recreation on data change
+  const computeItemKey = useCallback((_index: number, item: any) => {
+    return item?.id ?? `item-${_index}`;
+  }, []);
 
   // Track scroll position and first visible item to save (debounced)
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const handleRangeChanged = useCallback(
     (range: { startIndex: number; endIndex: number }) => {
+      // Don't save during scroll restoration
+      if (isRestoringScrollRef.current) return;
+
       // Debounce saves to avoid excessive updates
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
@@ -164,18 +198,27 @@ export default function RecipeGrid() {
           <NoRecipesText />
         )
       ) : (
-        <VirtuosoGrid
-          ref={virtuosoRef}
-          useWindowScroll
-          components={gridComponents}
-          computeItemKey={computeItemKey}
-          data={displayData}
-          endReached={loadMore}
-          initialTopMostItemIndex={initialTopMostItemIndex}
-          itemContent={itemContent}
-          overscan={1200}
-          rangeChanged={handleRangeChanged}
-        />
+        <>
+          <VirtuosoGrid
+            ref={virtuosoRef}
+            useWindowScroll
+            components={gridComponents}
+            computeItemKey={computeItemKey}
+            data={displayData}
+            endReached={loadMore}
+            increaseViewportBy={{ top: 400, bottom: 400 }}
+            initialTopMostItemIndex={initialTopMostItemIndex}
+            itemContent={itemContent}
+            overscan={1200}
+            rangeChanged={handleRangeChanged}
+            scrollSeekConfiguration={scrollSeekConfiguration}
+          />
+          {isFetchingMore && (
+            <div className="flex justify-center py-8">
+              <Spinner color="primary" size="lg" />
+            </div>
+          )}
+        </>
       )}
     </div>
   );

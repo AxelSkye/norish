@@ -1,28 +1,28 @@
 "use client";
 
-import { useState } from "react";
 import {
   WrenchScrewdriverIcon,
   FireIcon,
   ClockIcon,
   ArrowTopRightOnSquareIcon,
+  ArrowLeftIcon,
 } from "@heroicons/react/20/solid";
 import { Card, CardBody, CardHeader, Chip } from "@heroui/react";
-import Image from "next/image";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 
 import AuthorChip from "./components/author-chip";
 import { useRecipeContextRequired } from "./context";
 import ServingsControl from "./components/servings-control";
 
-import { formatMinutesHM } from "@/lib/helpers";
+import { formatMinutesHM, sortTagsWithAllergyPriority, isAllergenTag } from "@/lib/helpers";
 import SystemConvertMenu from "@/app/(app)/recipes/[id]/components/system-convert-menu";
 import StepsList from "@/app/(app)/recipes/[id]/components/steps-list";
 import IngredientsList from "@/app/(app)/recipes/[id]/components/ingredient-list";
 import ActionsMenu from "@/app/(app)/recipes/[id]/components/actions-menu";
 import AddToGroceries from "@/app/(app)/recipes/[id]/components/add-to-groceries-button";
 import WakeLockToggle from "@/app/(app)/recipes/[id]/components/wake-lock-toggle";
-import ImageLightbox from "@/components/shared/image-lightbox";
+import ImageCarousel, { type CarouselImage } from "@/components/shared/image-carousel";
 import SmartMarkdownRenderer from "@/components/shared/smart-markdown-renderer";
 import HeartButton from "@/components/shared/heart-button";
 import DoubleTapContainer from "@/components/shared/double-tap-container";
@@ -32,23 +32,40 @@ import { useRatingQuery, useRatingsMutation } from "@/hooks/ratings";
 import NutritionCard from "@/components/recipes/nutrition-card";
 
 export default function RecipePageDesktop() {
-  var { recipe, currentServings: _currentServings } = useRecipeContextRequired();
-  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const {
+    recipe,
+    currentServings: _currentServings,
+    allergies,
+    allergySet,
+  } = useRecipeContextRequired();
   const { isFavorite: checkFavorite } = useFavoritesQuery();
   const { toggleFavorite } = useFavoritesMutation();
   const { userRating, averageRating, isLoading: isRatingLoading } = useRatingQuery(recipe.id);
   const { rateRecipe, isRating } = useRatingsMutation();
+  const t = useTranslations("recipes.detail");
 
   const isFavorite = checkFavorite(recipe.id);
   const handleToggleFavorite = () => toggleFavorite(recipe.id);
   const handleRateRecipe = (rating: number) => rateRecipe(recipe.id, rating);
 
+  // Build carousel images from recipe.images with fallback to legacy recipe.image
+  const carouselImages: CarouselImage[] =
+    recipe.images && recipe.images.length > 0
+      ? recipe.images.map((img) => ({ image: img.image, alt: recipe.name ?? "Recipe image" }))
+      : recipe.image
+        ? [{ image: recipe.image, alt: recipe.name ?? "Recipe image" }]
+        : [];
+
   return (
     <div className="hidden flex-col space-y-6 px-6 pb-10 md:flex">
       {/* Back link */}
       <div className="w-fit">
-        <Link className="text-default-500 text-base hover:underline" href="/">
-          ← Back to recipes
+        <Link
+          className="text-default-500 flex items-center gap-1 text-base hover:underline"
+          href="/"
+        >
+          <ArrowLeftIcon className="h-4 w-4" />
+          {t("backToRecipes")}
         </Link>
       </div>
 
@@ -70,7 +87,7 @@ export default function RecipePageDesktop() {
                         href={recipe.url}
                         rel="noopener noreferrer"
                         target="_blank"
-                        title="View original recipe"
+                        title={t("viewOriginal")}
                       >
                         <ArrowTopRightOnSquareIcon className="text-default-400 hover:text-primary inline h-4 w-4" />
                       </a>
@@ -84,7 +101,7 @@ export default function RecipePageDesktop() {
 
               {/* Description */}
               {recipe.description && (
-                <p className="text-default-600 text-base leading-relaxed">
+                <p className="text-base leading-relaxed">
                   <SmartMarkdownRenderer text={recipe.description} />
                 </p>
               )}
@@ -116,11 +133,22 @@ export default function RecipePageDesktop() {
               {/* Tags */}
               {recipe.tags.length > 0 && (
                 <div className="flex flex-wrap gap-2">
-                  {recipe.tags.map((t: { name: string }) => (
-                    <Chip key={t.name} size="sm" variant="flat">
-                      {t.name}
-                    </Chip>
-                  ))}
+                  {sortTagsWithAllergyPriority(recipe.tags, allergies).map(
+                    (tag: { name: string }) => {
+                      const isAllergen = isAllergenTag(tag.name, allergySet);
+
+                      return (
+                        <Chip
+                          key={tag.name}
+                          className={isAllergen ? "bg-warning text-warning-foreground" : ""}
+                          size="sm"
+                          variant="flat"
+                        >
+                          {tag.name}
+                        </Chip>
+                      );
+                    }
+                  )}
                 </div>
               )}
             </CardBody>
@@ -130,7 +158,7 @@ export default function RecipePageDesktop() {
           <Card className="bg-content1 rounded-2xl shadow-md">
             <CardBody className="space-y-4 p-6">
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold">Ingredients</h2>
+                <h2 className="text-lg font-semibold">{t("ingredients")}</h2>
                 <div className="flex items-center gap-2">
                   {recipe.servings && <ServingsControl />}
                   {recipe.systemUsed && <SystemConvertMenu />}
@@ -150,24 +178,16 @@ export default function RecipePageDesktop() {
 
         {/* RIGHT column: Image + Steps (stacked) */}
         <div className="col-span-3 flex flex-col gap-6">
-          {/* Hero image */}
-          <DoubleTapContainer
-            className="bg-default-200 relative min-h-[400px] overflow-hidden rounded-2xl"
-            onDoubleTap={handleToggleFavorite}
-          >
-            {recipe.image ? (
-              <Image
-                fill
-                unoptimized
-                alt={recipe.name ?? "Recipe image"}
-                className="h-full w-full object-cover"
-                src={recipe.image}
+          {/* Hero image carousel - wrapped to match Card styling */}
+          <div className="relative overflow-hidden rounded-2xl shadow-md">
+            <DoubleTapContainer onDoubleTap={handleToggleFavorite}>
+              <ImageCarousel
+                className="min-h-[400px]"
+                images={carouselImages}
+                recipeName={recipe.name ?? "Recipe"}
+                rounded={false}
               />
-            ) : (
-              <div className="text-default-500 flex h-full w-full items-center justify-center">
-                <span className="text-base font-medium opacity-70">No image available</span>
-              </div>
-            )}
+            </DoubleTapContainer>
 
             {/* Heart button - top right (always visible) */}
             <div className="absolute top-4 right-4 z-50">
@@ -185,12 +205,12 @@ export default function RecipePageDesktop() {
                 <AuthorChip image={recipe.author.image} name={recipe.author.name} />
               </div>
             )}
-          </DoubleTapContainer>
+          </div>
 
           {/* Steps Card (below image in right column) */}
           <Card className="bg-content1 rounded-2xl shadow-md">
             <CardHeader className="flex items-center justify-between px-6 pt-6">
-              <h2 className="text-lg font-semibold">Steps</h2>
+              <h2 className="text-lg font-semibold">{t("steps")}</h2>
               <WakeLockToggle />
             </CardHeader>
             <CardBody className="px-3 pt-2 pb-0">
@@ -199,7 +219,7 @@ export default function RecipePageDesktop() {
 
             {/* Rating Section */}
             <div className="bg-default-100 mx-3 mt-4 mb-3 flex flex-col items-center gap-4 rounded-xl py-6">
-              <p className="text-default-600 font-medium">What did you think of this recipe?</p>
+              <p className="text-default-600 font-medium">{t("ratingPrompt")}</p>
               <StarRating
                 isLoading={isRating || isRatingLoading}
                 value={userRating ?? averageRating}
@@ -209,14 +229,6 @@ export default function RecipePageDesktop() {
           </Card>
         </div>
       </div>
-
-      {recipe.image && (
-        <ImageLightbox
-          images={[{ src: recipe.image, alt: recipe.name ?? "Recipe image" }]}
-          isOpen={lightboxOpen}
-          onClose={() => setLightboxOpen(false)}
-        />
-      )}
     </div>
   );
 }

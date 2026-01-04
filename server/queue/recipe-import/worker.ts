@@ -15,13 +15,15 @@ import { createLogger } from "@/server/logger";
 import { emitByPolicy, type PolicyEmitContext } from "@/server/trpc/helpers";
 import { recipeEmitter } from "@/server/trpc/routers/recipes/emitter";
 import { getRecipePermissionPolicy, getAIConfig } from "@/config/server-config-loader";
+import { addAutoTaggingJob } from "@/server/queue/auto-tagging/queue";
+import { addAllergyDetectionJob } from "@/server/queue/allergy-detection/queue";
 import {
   createRecipeWithRefs,
   recipeExistsByUrlForPolicy,
   dashboardRecipe,
   getAllergiesForUsers,
 } from "@/server/db";
-import { parseRecipeFromUrl } from "@/lib/parser";
+import { parseRecipeFromUrl } from "@/server/parser";
 
 const log = createLogger("worker:recipe-import");
 
@@ -59,9 +61,11 @@ async function processImportJob(job: Job<RecipeImportJobData>): Promise<void> {
       );
 
       // Include pendingRecipeId so client can remove the skeleton
+      // Show imported toast since no processing will follow for existing recipes
       emitByPolicy(recipeEmitter, viewPolicy, ctx, "imported", {
         recipe: dashboardDto,
         pendingRecipeId: recipeId,
+        toast: "imported",
       });
     }
 
@@ -85,13 +89,13 @@ async function processImportJob(job: Job<RecipeImportJobData>): Promise<void> {
   }
 
   // Parse and create recipe
-  const parsedRecipe = await parseRecipeFromUrl(url, allergyNames, job.data.forceAI);
+  const parseResult = await parseRecipeFromUrl(url, allergyNames, job.data.forceAI);
 
-  if (!parsedRecipe) {
+  if (!parseResult.recipe) {
     throw new Error("Failed to parse recipe from URL");
   }
 
-  const createdId = await createRecipeWithRefs(recipeId, userId, parsedRecipe);
+  const createdId = await createRecipeWithRefs(recipeId, userId, parseResult.recipe);
 
   if (!createdId) {
     throw new Error("Failed to save imported recipe");
@@ -100,12 +104,36 @@ async function processImportJob(job: Job<RecipeImportJobData>): Promise<void> {
   const dashboardDto = await dashboardRecipe(createdId);
 
   if (dashboardDto) {
-    log.info({ jobId: job.id, recipeId: createdId, url }, "Recipe imported successfully");
+    log.info(
+      { jobId: job.id, recipeId: createdId, url, usedAI: parseResult.usedAI },
+      "Recipe imported successfully"
+    );
 
+    // If AI was used, no processing will follow - show imported toast
+    // If AI was NOT used, auto-tagging/allergy detection will follow - no toast needed
     emitByPolicy(recipeEmitter, viewPolicy, ctx, "imported", {
       recipe: dashboardDto,
       pendingRecipeId: recipeId,
+      toast: parseResult.usedAI ? "imported" : undefined,
     });
+
+    // Trigger auto-tagging only if AI was NOT used for extraction
+    // (AI extraction already includes auto-tagging instructions in the prompt)
+    if (!parseResult.usedAI) {
+      await addAutoTaggingJob({
+        recipeId: createdId,
+        userId,
+        householdKey,
+      });
+
+      // Trigger allergy detection for structured imports
+      // (AI extraction already handles allergy detection inline)
+      await addAllergyDetectionJob({
+        recipeId: createdId,
+        userId,
+        householdKey,
+      });
+    }
   }
 }
 

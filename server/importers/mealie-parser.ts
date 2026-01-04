@@ -1,5 +1,7 @@
 import JSZip from "jszip";
 
+import { saveImageBytes } from "../downloader";
+
 import { serverLogger as log } from "@/server/logger";
 import { inferSystemUsedFromParsed } from "@/lib/determine-recipe-system";
 import { parseIngredientWithDefaults } from "@/lib/helpers";
@@ -154,8 +156,6 @@ export async function parseMealieRecipeToDTO(
   if (imageBuffer && imageBuffer.length > 0) {
     try {
       // Import saveImageBytes at the top to avoid dynamic import issues
-      const { saveImageBytes } = await import("@/lib/downloader");
-
       image = await saveImageBytes(imageBuffer, title);
     } catch (err) {
       // Log but ignore image failure, proceed without image

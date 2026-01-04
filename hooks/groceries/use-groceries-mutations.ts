@@ -1,6 +1,6 @@
 "use client";
 
-import type { GroceryDto, RecurringGroceryDto } from "@/types";
+import type { RecurringGroceryDto } from "@/types";
 import type { RecurrencePattern } from "@/types/recurrence";
 
 import { useMutation } from "@tanstack/react-query";
@@ -11,18 +11,26 @@ import { useTRPC } from "@/app/providers/trpc-provider";
 import { useUnitsQuery } from "@/hooks/config";
 import { parseIngredientWithDefaults } from "@/lib/helpers";
 import { calculateNextOccurrence, getTodayString } from "@/lib/recurrence/calculator";
+import { createClientLogger } from "@/lib/logger";
+
+const log = createClientLogger("GroceriesMutations");
 
 export type GroceryCreateData = {
   name: string;
   amount?: number | null;
   unit?: string | null;
   isDone?: boolean;
+  recipeIngredientId?: string | null;
 };
 
 export type GroceriesMutationsResult = {
-  createGrocery: (raw: string) => void;
+  createGrocery: (raw: string, storeId?: string | null) => void;
   createGroceriesFromData: (groceries: GroceryCreateData[]) => Promise<string[]>;
-  createRecurringGrocery: (raw: string, pattern: RecurrencePattern) => void;
+  createRecurringGrocery: (
+    raw: string,
+    pattern: RecurrencePattern,
+    storeId?: string | null
+  ) => void;
   toggleGroceries: (ids: string[], isDone: boolean) => void;
   toggleRecurringGrocery: (recurringGroceryId: string, groceryId: string, isDone: boolean) => void;
   updateGrocery: (id: string, raw: string) => void;
@@ -35,6 +43,16 @@ export type GroceriesMutationsResult = {
   deleteGroceries: (ids: string[]) => void;
   deleteRecurringGrocery: (recurringGroceryId: string) => void;
   getRecurringGroceryForGrocery: (groceryId: string) => RecurringGroceryDto | null;
+  assignGroceryToStore: (
+    groceryId: string,
+    storeId: string | null,
+    savePreference?: boolean
+  ) => void;
+  reorderGroceriesInStore: (
+    updates: { id: string; sortOrder: number; storeId?: string | null }[]
+  ) => void;
+  markAllDoneInStore: (storeId: string | null) => void;
+  deleteDoneInStore: (storeId: string | null) => void;
 };
 
 export function useGroceriesMutations(): GroceriesMutationsResult {
@@ -50,34 +68,21 @@ export function useGroceriesMutations(): GroceriesMutationsResult {
   const updateRecurringMutation = useMutation(trpc.groceries.updateRecurring.mutationOptions());
   const deleteRecurringMutation = useMutation(trpc.groceries.deleteRecurring.mutationOptions());
   const checkRecurringMutation = useMutation(trpc.groceries.checkRecurring.mutationOptions());
+  const markAllDoneMutation = useMutation(trpc.groceries.markAllDone.mutationOptions());
+  const deleteDoneMutation = useMutation(trpc.groceries.deleteDone.mutationOptions());
 
-  const createGrocery = (raw: string) => {
+  const createGrocery = (raw: string, storeId?: string | null) => {
     const parsed = parseIngredientWithDefaults(raw, units)[0];
     const groceryData = {
       name: parsed.description,
       amount: parsed.quantity,
       unit: parsed.unitOfMeasure,
       isDone: false,
+      storeId: storeId ?? null,
     };
 
+    // No optimistic update - websocket subscription will add with correct store
     createMutation.mutate([groceryData], {
-      onSuccess: (ids) => {
-        const id = ids[0];
-        const dto: GroceryDto = {
-          id,
-          ...groceryData,
-          recurringGroceryId: null,
-        };
-
-        setGroceriesData((prev) => {
-          if (!prev) return prev;
-          const exists = prev.groceries.some((g) => g.id === id);
-
-          if (exists) return prev;
-
-          return { ...prev, groceries: [dto, ...prev.groceries] };
-        });
-      },
       onError: () => invalidate(),
     });
   };
@@ -88,30 +93,13 @@ export function useGroceriesMutations(): GroceriesMutationsResult {
       amount: g.amount ?? null,
       unit: g.unit ?? null,
       isDone: g.isDone ?? false,
+      recipeIngredientId: g.recipeIngredientId ?? null,
     }));
 
     return new Promise((resolve, reject) => {
+      // No optimistic update - websocket subscription will add with correct store
       createMutation.mutate(groceriesToCreate, {
         onSuccess: (ids) => {
-          const dtos: GroceryDto[] = ids.map((id, i) => ({
-            id,
-            name: groceriesToCreate[i].name,
-            amount: groceriesToCreate[i].amount,
-            unit: groceriesToCreate[i].unit,
-            isDone: groceriesToCreate[i].isDone,
-            recurringGroceryId: null,
-          }));
-
-          setGroceriesData((prev) => {
-            if (!prev) return prev;
-            const existingIds = new Set(prev.groceries.map((g) => g.id));
-            const newGroceries = dtos.filter((d) => !existingIds.has(d.id));
-
-            if (newGroceries.length === 0) return prev;
-
-            return { ...prev, groceries: [...newGroceries, ...prev.groceries] };
-          });
-
           resolve(ids);
         },
         onError: (error) => {
@@ -122,11 +110,16 @@ export function useGroceriesMutations(): GroceriesMutationsResult {
     });
   };
 
-  const createRecurringGrocery = (raw: string, pattern: RecurrencePattern): void => {
+  const createRecurringGrocery = (
+    raw: string,
+    pattern: RecurrencePattern,
+    storeId?: string | null
+  ): void => {
     const parsed = parseIngredientWithDefaults(raw, units)[0];
     const today = getTodayString();
     const nextDate = calculateNextOccurrence(pattern, today);
 
+    // No optimistic update - websocket subscription will add with correct store
     createRecurringMutation.mutate(
       {
         name: parsed.description,
@@ -136,31 +129,9 @@ export function useGroceriesMutations(): GroceriesMutationsResult {
         recurrenceInterval: pattern.interval || 1,
         recurrenceWeekday: pattern.weekday ?? null,
         nextPlannedFor: nextDate,
+        storeId: storeId ?? null,
       },
       {
-        onSuccess: (id) => {
-          setGroceriesData((prev) => {
-            if (!prev) return prev;
-            const exists = prev.groceries.some((g) => g.id === id);
-
-            if (exists) return prev;
-
-            return {
-              ...prev,
-              groceries: [
-                {
-                  id,
-                  name: parsed.description,
-                  amount: parsed.quantity,
-                  unit: parsed.unitOfMeasure,
-                  isDone: false,
-                  recurringGroceryId: null,
-                } as GroceryDto,
-                ...prev.groceries,
-              ],
-            };
-          });
-        },
         onError: () => invalidate(),
       }
     );
@@ -265,6 +236,7 @@ export function useGroceriesMutations(): GroceriesMutationsResult {
         if (!prev) return prev;
 
         return {
+          ...prev,
           groceries: prev.groceries.map((g) =>
             g.id === groceryId
               ? {
@@ -343,8 +315,8 @@ export function useGroceriesMutations(): GroceriesMutationsResult {
       if (!prev) return prev;
 
       return {
+        ...prev,
         groceries: prev.groceries.filter((g) => !idsSet.has(g.id)),
-        recurringGroceries: prev.recurringGroceries,
       };
     });
 
@@ -374,6 +346,141 @@ export function useGroceriesMutations(): GroceriesMutationsResult {
     return recurringGroceries.find((r) => r.id === grocery.recurringGroceryId) || null;
   };
 
+  const assignToStoreMutation = useMutation(trpc.groceries.assignToStore.mutationOptions());
+
+  const assignGroceryToStore = (
+    groceryId: string,
+    storeId: string | null,
+    savePreference = true
+  ) => {
+    // Optimistic update
+    setGroceriesData((prev) => {
+      if (!prev) return prev;
+
+      const updatedGroceries = prev.groceries.map((g) =>
+        g.id === groceryId ? { ...g, storeId } : g
+      );
+
+      return {
+        ...prev,
+        groceries: updatedGroceries,
+      };
+    });
+
+    // Call backend
+    assignToStoreMutation.mutate(
+      { groceryId, storeId, savePreference },
+      {
+        onError: (error) => {
+          log.error({ error, groceryId, storeId }, "Failed to assign grocery to store");
+          invalidate();
+        },
+      }
+    );
+  };
+
+  const reorderMutation = useMutation(trpc.groceries.reorderInStore.mutationOptions());
+
+  const reorderGroceriesInStore = (
+    updates: { id: string; sortOrder: number; storeId?: string | null }[]
+  ) => {
+    // Optimistic update
+    setGroceriesData((prev) => {
+      if (!prev) return prev;
+
+      const updateMap = new Map(
+        updates.map((u) => [u.id, { sortOrder: u.sortOrder, storeId: u.storeId }])
+      );
+
+      // Update sortOrder
+      const updatedGroceries = prev.groceries
+        .map((g) => {
+          const update = updateMap.get(g.id);
+
+          if (!update) return g;
+
+          const updated = { ...g, sortOrder: update.sortOrder };
+
+          if (update.storeId !== undefined) {
+            updated.storeId = update.storeId;
+          }
+
+          return updated;
+        })
+        .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+
+      return {
+        ...prev,
+        groceries: updatedGroceries,
+      };
+    });
+
+    // Always call backend
+    reorderMutation.mutate(
+      { updates, savePreference: true },
+      {
+        onError: (error) => {
+          log.error({ error, updateCount: updates.length }, "Failed to reorder groceries");
+          invalidate();
+        },
+      }
+    );
+  };
+
+  const markAllDoneInStore = (storeId: string | null) => {
+    // Optimistic update - mark all active groceries in this store as done
+    setGroceriesData((prev) => {
+      if (!prev) return prev;
+
+      const updatedGroceries = prev.groceries.map((g) => {
+        if (g.storeId === storeId && !g.isDone) {
+          return { ...g, isDone: true };
+        }
+
+        return g;
+      });
+
+      return {
+        ...prev,
+        groceries: updatedGroceries,
+      };
+    });
+
+    markAllDoneMutation.mutate(
+      { storeId },
+      {
+        onError: (error) => {
+          log.error({ error, storeId }, "Failed to mark groceries as done");
+          invalidate();
+        },
+      }
+    );
+  };
+
+  const deleteDoneInStore = (storeId: string | null) => {
+    // Optimistic update - remove done groceries in this store
+    setGroceriesData((prev) => {
+      if (!prev) return prev;
+
+      const updatedGroceries = prev.groceries.filter((g) => !(g.storeId === storeId && g.isDone));
+
+      return {
+        ...prev,
+        groceries: updatedGroceries,
+      };
+    });
+
+    deleteDoneMutation.mutate(
+      { storeId },
+      {
+        onError: (error) => {
+          log.error({ error, storeId }, "Failed to delete done groceries");
+          invalidate();
+        },
+      }
+    );
+  };
+
   return {
     // Actions
     createGrocery,
@@ -386,5 +493,9 @@ export function useGroceriesMutations(): GroceriesMutationsResult {
     deleteGroceries,
     deleteRecurringGrocery,
     getRecurringGroceryForGrocery,
+    assignGroceryToStore,
+    reorderGroceriesInStore,
+    markAllDoneInStore,
+    deleteDoneInStore,
   };
 }

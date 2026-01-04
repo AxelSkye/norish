@@ -1,14 +1,16 @@
 "use client";
 
-import type { GroceryDto, RecurringGroceryDto } from "@/types";
+import type { GroceryDto, RecurringGroceryDto, StoreDto } from "@/types";
 import type { RecurrencePattern } from "@/types/recurrence";
 
 import { useState, useEffect } from "react";
 import { Button, Input } from "@heroui/react";
 import { AnimatePresence } from "motion/react";
+import { useTranslations } from "next-intl";
 
 import { RecurrenceSuggestion } from "@/app/(app)/groceries/components/recurrence-suggestion";
 import { RecurrencePanel } from "@/components/Panel/consumers/recurrence-panel";
+import { StoreSelector } from "@/components/groceries/store-selector";
 import { useGroceryFormState } from "@/hooks/use-grocery-form-state";
 import { useRecurrenceDetection } from "@/hooks/use-recurrence-detection";
 import Panel, { PANEL_HEIGHT_COMPACT } from "@/components/Panel/Panel";
@@ -18,7 +20,9 @@ type EditGroceryPanelProps = {
   onOpenChange: (open: boolean) => void;
   grocery: GroceryDto;
   recurringGrocery: RecurringGroceryDto | null;
+  stores: StoreDto[];
   onSave: (itemName: string, pattern: RecurrencePattern | null) => void;
+  onAssignToStore: (storeId: string | null, savePreference?: boolean) => void;
   onDelete: () => void;
 };
 
@@ -27,10 +31,16 @@ export default function EditGroceryPanel({
   onOpenChange,
   grocery,
   recurringGrocery,
+  stores,
   onSave,
+  onAssignToStore,
   onDelete,
 }: EditGroceryPanelProps) {
+  const t = useTranslations("groceries.panel");
+  const tActions = useTranslations("common.actions");
   const [recurrencePanelOpen, setRecurrencePanelOpen] = useState(false);
+  const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
+  const [hasStoreChanged, setHasStoreChanged] = useState(false);
 
   const {
     itemName,
@@ -53,6 +63,8 @@ export default function EditGroceryPanel({
       const text = [grocery.amount, grocery.unit, grocery.name].filter(Boolean).join(" ");
 
       setItemName(text);
+      setSelectedStoreId(grocery.storeId ?? null);
+      setHasStoreChanged(false);
 
       if (recurringGrocery) {
         setConfirmedPattern({
@@ -68,12 +80,23 @@ export default function EditGroceryPanel({
     }
   }, [open, grocery, recurringGrocery, setItemName, setConfirmedPattern, reset]);
 
+  const handleStoreChange = (storeId: string | null) => {
+    setSelectedStoreId(storeId);
+    setHasStoreChanged(storeId !== (grocery.storeId ?? null));
+  };
+
   const handleSubmit = () => {
     const trimmed = itemName.trim();
 
     if (!trimmed) return;
 
     onSave(trimmed, confirmedPattern);
+
+    // If store changed, save that too (with preference)
+    if (hasStoreChanged) {
+      onAssignToStore(selectedStoreId, true);
+    }
+
     onOpenChange(false);
   };
 
@@ -87,7 +110,7 @@ export default function EditGroceryPanel({
       <Panel
         height={PANEL_HEIGHT_COMPACT}
         open={open && !recurrencePanelOpen}
-        title="Edit Grocery"
+        title={t("editTitle")}
         onOpenChange={onOpenChange}
       >
         <div className="flex flex-col gap-4">
@@ -104,7 +127,7 @@ export default function EditGroceryPanel({
                   input: "text-lg font-medium",
                   inputWrapper: "border-primary-200 dark:border-primary-800",
                 }}
-                placeholder="e.g., milk every week"
+                placeholder={t("editPlaceholder")}
                 size="lg"
                 style={{ fontSize: "16px" }}
                 value={itemName}
@@ -115,6 +138,15 @@ export default function EditGroceryPanel({
                   }
                 }}
                 onValueChange={setItemName}
+              />
+
+              {/* Store selection */}
+              <StoreSelector
+                showWhenEmpty
+                label={t("selectStore")}
+                selectedStoreId={selectedStoreId}
+                stores={stores}
+                onSelectionChange={handleStoreChange}
               />
 
               {/* Recurrence Pills Container */}
@@ -153,7 +185,7 @@ export default function EditGroceryPanel({
                   variant="light"
                   onPress={() => setRecurrencePanelOpen(true)}
                 >
-                  + Add repeat
+                  {t("addRepeat")}
                 </Button>
               )}
             </div>
@@ -166,7 +198,7 @@ export default function EditGroceryPanel({
                 variant="flat"
                 onPress={onDelete}
               >
-                Delete
+                {tActions("delete")}
               </Button>
               <Button
                 className="min-w-16"
@@ -175,7 +207,7 @@ export default function EditGroceryPanel({
                 size="sm"
                 onPress={handleSubmit}
               >
-                Save
+                {tActions("save")}
               </Button>
             </div>
           </form>

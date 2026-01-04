@@ -73,6 +73,30 @@ vi.mock("@/server/queue/config", () => ({
     removeOnComplete: true,
     removeOnFail: true,
   },
+  autoTaggingJobOptions: {
+    attempts: 3,
+    backoff: { type: "exponential", delay: 2000 },
+    removeOnComplete: true,
+    removeOnFail: true,
+  },
+  allergyDetectionJobOptions: {
+    attempts: 3,
+    backoff: { type: "exponential", delay: 2000 },
+    removeOnComplete: true,
+    removeOnFail: true,
+  },
+  imageImportJobOptions: {
+    attempts: 3,
+    backoff: { type: "exponential", delay: 2000 },
+    removeOnComplete: true,
+    removeOnFail: true,
+  },
+  pasteImportJobOptions: {
+    attempts: 3,
+    backoff: { type: "exponential", delay: 2000 },
+    removeOnComplete: true,
+    removeOnFail: true,
+  },
   QUEUE_NAMES: {
     RECIPE_IMPORT: "recipe-import",
     IMAGE_IMPORT: "image-recipe-import",
@@ -80,6 +104,8 @@ vi.mock("@/server/queue/config", () => ({
     CALDAV_SYNC: "caldav-sync",
     SCHEDULED_TASKS: "scheduled-tasks",
     NUTRITION_ESTIMATION: "nutrition-estimation",
+    AUTO_TAGGING: "auto-tagging",
+    ALLERGY_DETECTION: "allergy-detection",
   },
 }));
 

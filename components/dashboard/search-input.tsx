@@ -1,79 +1,148 @@
 "use client";
 
-import { useCallback, useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
+import { useDebounceValue } from "usehooks-ts";
 import { Input } from "@heroui/react";
 import { MagnifyingGlassIcon } from "@heroicons/react/16/solid";
+import { useTranslations } from "next-intl";
+import { AnimatePresence, motion } from "motion/react";
 
 import Filters from "../shared/filters";
+
+import SearchFieldToggles from "./search-field-toggles";
 
 import { useRecipesContext } from "@/context/recipes-context";
 import { useRecipesFiltersContext } from "@/context/recipes-filters-context";
 import { isUrl } from "@/lib/helpers";
 
-interface SearchInputProps {
-  placeholder?: string;
-}
-
-export default function SearchInput({ placeholder = "Search or add recipe..." }: SearchInputProps) {
+export default function SearchInput() {
+  const t = useTranslations("recipes.dashboard");
   const { filters, setFilters } = useRecipesFiltersContext();
   const { importRecipe } = useRecipesContext();
-  const [_isPending, startTransition] = useTransition();
   const [inputValue, setInputValue] = useState(filters.rawInput);
+  const [debouncedValue] = useDebounceValue(inputValue, 300);
+  const [isFocused, setIsFocused] = useState(false);
+  const blurTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const skipNextDebounceRef = useRef(false);
 
-  const scheduleFilterUpdate = useCallback(
-    (value: string) => {
-      startTransition(() => setFilters({ rawInput: value }));
-    },
-    [setFilters]
-  );
-
+  // Sync debounced value to filters (but skip when external sync happens)
   useEffect(() => {
-    setInputValue(filters.rawInput);
+    if (skipNextDebounceRef.current) {
+      skipNextDebounceRef.current = false;
+
+      return;
+    }
+    // Don't trigger if it's a URL (handled immediately in handleChange)
+    if (!isUrl(debouncedValue.trim())) {
+      setFilters({ rawInput: debouncedValue.trim() });
+    }
+  }, [debouncedValue, setFilters]);
+
+  // Sync external filter changes to input (e.g., from clear button elsewhere)
+  useEffect(() => {
+    if (filters.rawInput !== inputValue.trim()) {
+      skipNextDebounceRef.current = true;
+      setInputValue(filters.rawInput);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters.rawInput]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (blurTimeoutRef.current) {
+        clearTimeout(blurTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const rawValue = e.target.value;
-
-    setInputValue(rawValue);
     const trimmedValue = rawValue.trim();
 
+    // Handle URL imports immediately (no debounce)
     if (isUrl(trimmedValue)) {
       setInputValue("");
-      scheduleFilterUpdate("");
+      setFilters({ rawInput: "" });
       void importRecipe(trimmedValue);
     } else {
-      scheduleFilterUpdate(trimmedValue);
+      // Regular text - just update input, debounce handles filter sync
+      setInputValue(rawValue);
     }
   };
 
+  const handleBlur = () => {
+    // Delay blur to allow clicks on toggles to register
+    blurTimeoutRef.current = setTimeout(() => {
+      setIsFocused(false);
+    }, 2000);
+  };
+
+  const handleFocus = () => {
+    // Cancel any pending blur
+    if (blurTimeoutRef.current) {
+      clearTimeout(blurTimeoutRef.current);
+      blurTimeoutRef.current = null;
+    }
+    setIsFocused(true);
+  };
+
+  // Reset hide timer when interacting with toggles
+  const resetHideTimer = useCallback(() => {
+    if (blurTimeoutRef.current) {
+      clearTimeout(blurTimeoutRef.current);
+      blurTimeoutRef.current = setTimeout(() => {
+        setIsFocused(false);
+      }, 2000);
+    }
+  }, []);
+
   const hasFilters = filters.rawInput.trim().length > 0 || filters.searchTags.length > 0;
+  const showFieldToggles = isFocused || inputValue.trim().length > 0;
 
   return (
-    <div className="flex w-full items-center gap-2">
-      <Input
-        isClearable
-        classNames={{
-          inputWrapper: "h-12",
-          input: "text-[15px]",
-        }}
-        id="search-input"
-        placeholder={placeholder}
-        radius="full"
-        startContent={
-          <MagnifyingGlassIcon
-            className={`h-5 w-5 ${hasFilters ? "text-primary animate-pulse" : "text-default-400"}`}
-          />
-        }
-        style={{ fontSize: "16px" }}
-        value={inputValue}
-        variant="flat"
-        onChange={handleChange}
-        onClear={() => {
-          setInputValue("");
-          scheduleFilterUpdate("");
-        }}
-      />
-      <Filters isGlass={false} />
+    <div className="flex w-full flex-col gap-2">
+      <div className="flex w-full items-center gap-2">
+        <Input
+          isClearable
+          classNames={{
+            inputWrapper: "h-12",
+            input: "text-[15px]",
+          }}
+          id="search-input"
+          placeholder={t("searchPlaceholder")}
+          radius="full"
+          startContent={
+            <MagnifyingGlassIcon
+              className={`h-5 w-5 ${hasFilters ? "text-primary animate-pulse" : "text-default-400"}`}
+            />
+          }
+          style={{ fontSize: "16px" }}
+          value={inputValue}
+          variant="flat"
+          onBlur={handleBlur}
+          onChange={handleChange}
+          onClear={() => {
+            setInputValue("");
+            setFilters({ rawInput: "" });
+          }}
+          onFocus={handleFocus}
+        />
+        <Filters isGlass={false} />
+      </div>
+      <AnimatePresence initial={false}>
+        {showFieldToggles && (
+          <motion.div
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            initial={{ opacity: 0, height: 0 }}
+            style={{ overflow: "hidden" }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+          >
+            <SearchFieldToggles scrollable className="px-1 pb-1" onInteraction={resetHideTimer} />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -1,6 +1,11 @@
-import { ClockIcon, FireIcon, ArrowTopRightOnSquareIcon } from "@heroicons/react/20/solid";
+import {
+  ClockIcon,
+  FireIcon,
+  ArrowTopRightOnSquareIcon,
+  ArrowLeftIcon,
+} from "@heroicons/react/20/solid";
 import { Card, CardBody, Chip, Divider, Link } from "@heroui/react";
-import Image from "next/image";
+import { useTranslations } from "next-intl";
 
 import AuthorChip from "./components/author-chip";
 import { useRecipeContextRequired } from "./context";
@@ -12,47 +17,54 @@ import ServingsControl from "@/app/(app)/recipes/[id]/components/servings-contro
 import StepsList from "@/app/(app)/recipes/[id]/components/steps-list";
 import SystemConvertMenu from "@/app/(app)/recipes/[id]/components/system-convert-menu";
 import WakeLockToggle from "@/app/(app)/recipes/[id]/components/wake-lock-toggle";
-import { formatMinutesHM } from "@/lib/helpers";
+import { formatMinutesHM, sortTagsWithAllergyPriority, isAllergenTag } from "@/lib/helpers";
 import SmartMarkdownRenderer from "@/components/shared/smart-markdown-renderer";
 import HeartButton from "@/components/shared/heart-button";
 import DoubleTapContainer from "@/components/shared/double-tap-container";
 import StarRating from "@/components/shared/star-rating";
+import ImageCarousel, { type CarouselImage } from "@/components/shared/image-carousel";
 import { useFavoritesQuery, useFavoritesMutation } from "@/hooks/favorites";
 import { useRatingQuery, useRatingsMutation } from "@/hooks/ratings";
 import { NutritionSection } from "@/components/recipes/nutrition-card";
 
 export default function RecipePageMobile() {
-  var { recipe, currentServings: _currentServings } = useRecipeContextRequired();
+  const {
+    recipe,
+    currentServings: _currentServings,
+    allergies,
+    allergySet,
+  } = useRecipeContextRequired();
   const { isFavorite: checkFavorite } = useFavoritesQuery();
   const { toggleFavorite } = useFavoritesMutation();
   const { userRating, averageRating, isLoading: isRatingLoading } = useRatingQuery(recipe.id);
   const { rateRecipe, isRating } = useRatingsMutation();
+  const t = useTranslations("recipes.detail");
 
   const isFavorite = checkFavorite(recipe.id);
   const handleToggleFavorite = () => toggleFavorite(recipe.id);
   const handleRateRecipe = (rating: number) => rateRecipe(recipe.id, rating);
 
+  // Build carousel images from recipe.images with fallback to legacy recipe.image
+  const carouselImages: CarouselImage[] =
+    recipe.images && recipe.images.length > 0
+      ? recipe.images.map((img) => ({ image: img.image, alt: recipe.name ?? "Recipe image" }))
+      : recipe.image
+        ? [{ image: recipe.image, alt: recipe.name ?? "Recipe image" }]
+        : [];
+
   return (
-    <div className="flex w-full flex-col">
-      {/* Hero Image */}
-      <DoubleTapContainer
-        className="bg-default-200 relative h-72 w-full overflow-hidden"
-        onDoubleTap={handleToggleFavorite}
-      >
-        {recipe.image ? (
-          <Image
-            fill
-            priority
-            unoptimized
-            alt={recipe.name ?? "Recipe image"}
-            className="object-cover"
-            src={recipe.image}
+    <div className="flex w-full flex-col overflow-x-hidden">
+      {/* Hero Image Carousel */}
+      <div className="relative w-full overflow-hidden" style={{ height: "18rem" }}>
+        <DoubleTapContainer className="h-full w-full" onDoubleTap={handleToggleFavorite}>
+          <ImageCarousel
+            aspectRatio="4/3"
+            className="h-full w-full"
+            images={carouselImages}
+            recipeName={recipe.name ?? "Recipe"}
+            rounded={false}
           />
-        ) : (
-          <div className="text-default-500 flex h-full w-full items-center justify-center">
-            <span className="text-base font-medium opacity-70">No image available</span>
-          </div>
-        )}
+        </DoubleTapContainer>
 
         {/* Author chip */}
         {recipe?.author && (
@@ -73,7 +85,7 @@ export default function RecipePageMobile() {
             onToggle={handleToggleFavorite}
           />
         </div>
-      </DoubleTapContainer>
+      </div>
 
       {/* Unified Content Card - contains all sections */}
       <Card
@@ -85,8 +97,9 @@ export default function RecipePageMobile() {
           {/* Back link and Actions */}
           <div className="flex items-center justify-between">
             <div className="w-fit hover:underline">
-              <Link className="text-default-500 text-base" href="/">
-                ← Back to recipes
+              <Link className="text-default-500 flex items-center gap-1 text-base" href="/">
+                <ArrowLeftIcon className="h-4 w-4" />
+                {t("backToRecipes")}
               </Link>
             </div>
             <div className="flex-shrink-0">
@@ -103,7 +116,7 @@ export default function RecipePageMobile() {
                 href={recipe.url}
                 rel="noopener noreferrer"
                 target="_blank"
-                title="View original recipe"
+                title={t("viewOriginal")}
               >
                 <ArrowTopRightOnSquareIcon className="text-default-400 hover:text-primary inline h-4 w-4" />
               </a>
@@ -112,7 +125,7 @@ export default function RecipePageMobile() {
 
           {/* Description */}
           {recipe.description && (
-            <p className="text-default-600 text-base leading-relaxed">
+            <p className="text-base leading-relaxed">
               <SmartMarkdownRenderer text={recipe.description} />
             </p>
           )}
@@ -123,13 +136,13 @@ export default function RecipePageMobile() {
               {recipe.prepMinutes && (
                 <div className="flex items-center gap-1">
                   <ClockIcon className="h-4 w-4" />
-                  {formatMinutesHM(recipe.prepMinutes)} prep
+                  {formatMinutesHM(recipe.prepMinutes)} {t("prep")}
                 </div>
               )}
               {recipe.totalMinutes && recipe.totalMinutes !== 0 && (
                 <div className="flex items-center gap-1">
                   <FireIcon className="h-4 w-4" />
-                  {formatMinutesHM(recipe.totalMinutes)} total
+                  {formatMinutesHM(recipe.totalMinutes)} {t("total")}
                 </div>
               )}
             </div>
@@ -138,11 +151,20 @@ export default function RecipePageMobile() {
           {/* Tags */}
           {recipe.tags.length > 0 && (
             <div className="flex flex-wrap gap-2">
-              {recipe.tags.map((t: { name: string }) => (
-                <Chip key={t.name} size="sm" variant="flat">
-                  {t.name}
-                </Chip>
-              ))}
+              {sortTagsWithAllergyPriority(recipe.tags, allergies).map((tag: { name: string }) => {
+                const isAllergen = isAllergenTag(tag.name, allergySet);
+
+                return (
+                  <Chip
+                    key={tag.name}
+                    className={isAllergen ? "bg-warning text-warning-foreground" : ""}
+                    size="sm"
+                    variant="flat"
+                  >
+                    {tag.name}
+                  </Chip>
+                );
+              })}
             </div>
           )}
 
@@ -151,7 +173,7 @@ export default function RecipePageMobile() {
           {/* Ingredients Section */}
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold">Ingredients</h2>
+              <h2 className="text-lg font-semibold">{t("ingredients")}</h2>
               <div className="flex items-center gap-2">
                 <ServingsControl />
                 {recipe.systemUsed && <SystemConvertMenu />}
@@ -171,7 +193,7 @@ export default function RecipePageMobile() {
           {/* Steps Section */}
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold">Steps</h2>
+              <h2 className="text-lg font-semibold">{t("steps")}</h2>
               <WakeLockToggle />
             </div>
 
@@ -181,7 +203,7 @@ export default function RecipePageMobile() {
 
             {/* Rating Section */}
             <div className="bg-default-100 -mx-1 flex flex-col items-center gap-4 rounded-xl py-6">
-              <p className="text-default-600 font-medium">What did you think of this recipe?</p>
+              <p className="text-default-600 font-medium">{t("ratingPrompt")}</p>
               <StarRating
                 isLoading={isRating || isRatingLoading}
                 value={userRating ?? averageRating}

@@ -1,13 +1,16 @@
 "use client";
 
 import type { RecurrencePattern } from "@/types/recurrence";
+import type { StoreDto } from "@/types";
 
 import { useState, useEffect } from "react";
 import { Button, Input } from "@heroui/react";
 import { AnimatePresence } from "motion/react";
+import { useTranslations } from "next-intl";
 
 import { RecurrenceSuggestion } from "@/app/(app)/groceries/components/recurrence-suggestion";
 import { RecurrencePanel } from "@/components/Panel/consumers/recurrence-panel";
+import { StoreSelector } from "@/components/groceries/store-selector";
 import { useGroceryFormState } from "@/hooks/use-grocery-form-state";
 import { useRecurrenceDetection } from "@/hooks/use-recurrence-detection";
 import Panel, { PANEL_HEIGHT_COMPACT } from "@/components/Panel/Panel";
@@ -15,17 +18,26 @@ import Panel, { PANEL_HEIGHT_COMPACT } from "@/components/Panel/Panel";
 type AddGroceryPanelProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onCreate: (itemName: string) => void;
-  onCreateRecurring: (itemName: string, pattern: RecurrencePattern) => void;
+  stores: StoreDto[];
+  onCreate: (itemName: string, storeId?: string | null) => void;
+  onCreateRecurring: (
+    itemName: string,
+    pattern: RecurrencePattern,
+    storeId?: string | null
+  ) => void;
 };
 
 export default function AddGroceryPanel({
   open,
   onOpenChange,
+  stores,
   onCreate,
   onCreateRecurring,
 }: AddGroceryPanelProps) {
+  const t = useTranslations("groceries.panel");
+  const tActions = useTranslations("common.actions");
   const [recurrencePanelOpen, setRecurrencePanelOpen] = useState(false);
+  const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
 
   const {
     itemName,
@@ -46,6 +58,7 @@ export default function AddGroceryPanel({
   useEffect(() => {
     if (!open) {
       reset();
+      setSelectedStoreId(null);
     }
   }, [open, reset]);
 
@@ -55,13 +68,14 @@ export default function AddGroceryPanel({
     if (!trimmed) return;
 
     if (confirmedPattern) {
-      onCreateRecurring(trimmed, confirmedPattern);
+      onCreateRecurring(trimmed, confirmedPattern, selectedStoreId);
     } else {
-      onCreate(trimmed);
+      onCreate(trimmed, selectedStoreId);
     }
 
     // Reset form but keep panel open for batch adding
     reset();
+    // Keep the store selection for batch adding to same store
   };
 
   const handleRecurrenceSave = (pattern: RecurrencePattern | null) => {
@@ -74,7 +88,7 @@ export default function AddGroceryPanel({
       <Panel
         height={PANEL_HEIGHT_COMPACT}
         open={open && !recurrencePanelOpen}
-        title="Add Grocery"
+        title={t("addTitle")}
         onOpenChange={onOpenChange}
       >
         <div className="flex flex-col gap-4">
@@ -91,7 +105,7 @@ export default function AddGroceryPanel({
                   input: "text-lg font-medium",
                   inputWrapper: "border-primary-200 dark:border-primary-800",
                 }}
-                placeholder="e.g., milk every week"
+                placeholder={t("placeholder")}
                 size="lg"
                 style={{ fontSize: "16px" }}
                 value={itemName}
@@ -102,6 +116,17 @@ export default function AddGroceryPanel({
                   }
                 }}
                 onValueChange={setItemName}
+              />
+
+              {/* Store selection */}
+              <StoreSelector
+                label={t("storeOptional")}
+                noStoreDescription={t("autoDetectFromHistory")}
+                placeholder={t("autoDetectOrSelect")}
+                selectedStoreId={selectedStoreId}
+                size="sm"
+                stores={stores}
+                onSelectionChange={setSelectedStoreId}
               />
 
               {/* Recurrence Pills Container */}
@@ -135,12 +160,12 @@ export default function AddGroceryPanel({
               {/* Link to manual recurrence editor */}
               {!confirmedPattern && !detectedPattern && (
                 <Button
-                  className="-mt-1 font-medium"
+                  className="font-medium"
                   size="sm"
                   variant="light"
                   onPress={() => setRecurrencePanelOpen(true)}
                 >
-                  + Add repeat
+                  {t("addRepeat")}
                 </Button>
               )}
             </div>
@@ -153,7 +178,7 @@ export default function AddGroceryPanel({
                 size="sm"
                 onPress={handleSubmit}
               >
-                Add
+                {tActions("add")}
               </Button>
             </div>
           </form>

@@ -131,14 +131,6 @@ export function isUrl(str: string): boolean {
   return httpUrlSchema.safeParse(str).success;
 }
 
-export async function isVideoUrl(str: string): Promise<boolean> {
-  if (!isUrl(str)) return false;
-
-  const { isSupportedVideoUrl } = await import("@/lib/video/detector");
-
-  return isSupportedVideoUrl(str);
-}
-
 export const toArr = (v: any) => (Array.isArray(v) ? v : []);
 
 export function startOfMonth(date: Date): Date {
@@ -177,94 +169,6 @@ export function dateKey(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-export function parseSearchTokens(rawInput: string, excludeTags: string[] = []): string[] {
-  const trimmed = rawInput.trim();
-
-  if (!trimmed) return [];
-
-  const excludeSet = new Set(excludeTags.map((t) => t.toLowerCase()));
-
-  return trimmed
-    .split(/\s+/)
-    .map((w) => (w.startsWith("#") ? w.slice(1) : w))
-    .filter((w) => w.length >= 2 && /^[\p{L}\p{N}_-]{1,32}$/u.test(w))
-    .map((w) => w.toLowerCase())
-    .filter((w) => !excludeSet.has(w));
-}
-
-function levenshteinDistance(a: string, b: string): number {
-  const matrix: number[][] = [];
-
-  for (let i = 0; i <= b.length; i++) {
-    matrix[i] = [i];
-  }
-
-  for (let j = 0; j <= a.length; j++) {
-    matrix[0][j] = j;
-  }
-
-  for (let i = 1; i <= b.length; i++) {
-    for (let j = 1; j <= a.length; j++) {
-      if (b.charAt(i - 1) === a.charAt(j - 1)) {
-        matrix[i][j] = matrix[i - 1][j - 1];
-      } else {
-        matrix[i][j] = Math.min(
-          matrix[i - 1][j - 1] + 1,
-          matrix[i][j - 1] + 1,
-          matrix[i - 1][j] + 1
-        );
-      }
-    }
-  }
-
-  return matrix[b.length][a.length];
-}
-
-export function findBestMatchingToken(tag: string, rawInput: string): string | null {
-  const tokens = rawInput.trim().split(/\s+/);
-
-  if (tokens.length === 0) return null;
-
-  const tagLower = tag.toLowerCase();
-  let bestToken: string | null = null;
-  let bestScore = Infinity;
-
-  for (const token of tokens) {
-    const cleaned = token.startsWith("#") ? token.slice(1) : token;
-    const cleanedLower = cleaned.toLowerCase();
-
-    if (Math.abs(cleanedLower.length - tagLower.length) > 5) continue;
-
-    let score: number;
-
-    if (cleanedLower === tagLower) {
-      score = 0;
-    } else if (tagLower.startsWith(cleanedLower)) {
-      score = 1 + (tagLower.length - cleanedLower.length) * 0.1;
-    } else if (cleanedLower.startsWith(tagLower)) {
-      score = 2 + (cleanedLower.length - tagLower.length) * 0.1;
-    } else if (tagLower.includes(cleanedLower) || cleanedLower.includes(tagLower)) {
-      score = 3 + levenshteinDistance(cleanedLower, tagLower) * 0.5;
-    } else {
-      const distance = levenshteinDistance(cleanedLower, tagLower);
-
-      // Only consider if distance is reasonable
-      if (distance <= Math.max(3, Math.floor(tagLower.length * 0.4))) {
-        score = 10 + distance;
-      } else {
-        continue;
-      }
-    }
-
-    if (score < bestScore) {
-      bestScore = score;
-      bestToken = token;
-    }
-  }
-
-  return bestScore < 15 ? bestToken : null;
-}
-
 /**
  * Normalize URL for consistent deduplication.
  * Removes trailing slashes, normalizes protocol, and strips tracking params.
@@ -288,4 +192,43 @@ export function normalizeUrl(url: string): string {
     // If URL parsing fails, just lowercase and trim
     return url.toLowerCase().trim();
   }
+}
+
+/**
+ * Sort tags with allergen tags appearing first, then alphabetically.
+ * Uses case-insensitive matching for allergen detection.
+ *
+ * @param tags - Array of tag objects with a name property
+ * @param allergies - Array of allergy tag names to prioritize
+ * @returns Sorted array of tags (allergens first, then alphabetically)
+ */
+export function sortTagsWithAllergyPriority<T extends { name: string }>(
+  tags: T[],
+  allergies: string[]
+): T[] {
+  // Create a Set for O(1) lookup of allergen names (case-insensitive)
+  const allergySet = new Set(allergies.map((a) => a.toLowerCase()));
+
+  return [...tags].sort((a, b) => {
+    const aIsAllergen = allergySet.has(a.name.toLowerCase());
+    const bIsAllergen = allergySet.has(b.name.toLowerCase());
+
+    // Allergens come first
+    if (aIsAllergen && !bIsAllergen) return -1;
+    if (!aIsAllergen && bIsAllergen) return 1;
+
+    // Within same category, sort alphabetically
+    return a.name.localeCompare(b.name);
+  });
+}
+
+/**
+ * Check if a tag is an allergen (case-insensitive).
+ *
+ * @param tagName - The tag name to check
+ * @param allergySet - Pre-computed Set of lowercase allergy names for O(1) lookup
+ * @returns True if the tag is an allergen
+ */
+export function isAllergenTag(tagName: string, allergySet: Set<string>): boolean {
+  return allergySet.has(tagName.toLowerCase());
 }

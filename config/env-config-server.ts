@@ -80,6 +80,27 @@ const ServerConfigSchema = z.object({
   OIDC_CLIENT_ID: z.string().optional(),
   OIDC_CLIENT_SECRET: z.string().optional(),
   OIDC_WELLKNOWN: z.string().optional(),
+  // OIDC Claim Mapping
+  OIDC_CLAIM_MAPPING_ENABLED: z
+    .string()
+    .transform((val) => val === "true" || val === "1")
+    .pipe(z.boolean())
+    .default(false),
+  OIDC_SCOPES: z
+    .string()
+    .optional()
+    .transform((val) =>
+      val
+        ? val
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : []
+    )
+    .pipe(z.array(z.string())),
+  OIDC_GROUPS_CLAIM: z.string().default("groups"),
+  OIDC_ADMIN_GROUP: z.string().default("norish_admin"),
+  OIDC_HOUSEHOLD_GROUP_PREFIX: z.string().default("norish_household_"),
   GITHUB_CLIENT_ID: z.string().optional(),
   GITHUB_CLIENT_SECRET: z.string().optional(),
   GOOGLE_CLIENT_ID: z.string().optional(),
@@ -133,6 +154,11 @@ const ServerConfigSchema = z.object({
 
   // Redis Configuration
   REDIS_URL: z.string().url().default("redis://localhost:6379"),
+
+  // Internationalization
+  // Note: Validation against available locales happens in i18n/config.ts
+  // If invalid locale is specified, falls back to 'en'
+  DEFAULT_LOCALE: z.string().default("en"),
 });
 
 export type ServerConfig = z.infer<typeof ServerConfigSchema>;

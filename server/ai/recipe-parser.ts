@@ -1,162 +1,121 @@
-import { getAIProvider } from "./providers/factory";
-import { jsonLdRecipeSchema } from "./schemas/jsonld-recipe";
-import { loadPrompt } from "./prompts/loader";
-import { extractImageCandidates, extractSanitizedBody } from "./helpers";
+import type { FullRecipeInsertDTO } from "@/types/dto/recipe";
 
-import { FullRecipeInsertDTO } from "@/types/dto/recipe";
-import { parseIngredientWithDefaults } from "@/lib/helpers";
-import { normalizeRecipeFromJson } from "@/lib/parser/normalize";
-import { getUnits, isAIEnabled } from "@/config/server-config-loader";
+import { generateText, Output } from "ai";
+
+import { getModels, getGenerationSettings } from "./providers";
+import { recipeExtractionSchema, type RecipeExtractionOutput } from "./schemas/recipe.schema";
+import { extractImageCandidates, extractSanitizedBody } from "./helpers";
+import { aiSuccess, aiError, mapErrorToCode, getErrorMessage, type AIResult } from "./types/result";
+import { buildRecipeExtractionPrompt } from "./prompts/builder";
+import {
+  validateExtractionOutput,
+  normalizeExtractionOutput,
+  getExtractionLogContext,
+} from "./features/recipe-extraction/normalizer";
+
+import { isAIEnabled } from "@/config/server-config-loader";
 import { aiLogger } from "@/server/logger";
 
-async function buildExtractionPrompt(
-  url: string | undefined,
-  html: string,
-  allergies?: string[]
-): Promise<string> {
-  const sanitized = extractSanitizedBody(html);
-  const truncated = sanitized.slice(0, 50000);
+// Re-export type for consumers
+export type { RecipeExtractionOutput };
 
-  const prompt = await loadPrompt("recipe-extraction");
-
-  aiLogger.debug({ prompt }, "Loaded extraction prompt template");
-
-  // Build allergy detection instruction
-  let allergyInstruction = "";
-
-  if (allergies && allergies.length > 0) {
-    allergyInstruction = `
-ALLERGY DETECTION (STRICT):
-- The "keywords" array MUST contain ONLY items from this list: ${allergies.join(", ")}
-- Do NOT add dietary tags, cuisine tags, or descriptive tags
-- If none are present, return an empty array
-- NEVER add additional keywords
-`;
-  } else {
-    allergyInstruction =
-      "\nALLERGY DETECTION: Skip allergy/dietary tag detection. Do not add any tags to the keywords array.";
-  }
-
-  return `${prompt}${allergyInstruction}
-${url ? `URL: ${url}\n` : ""}
-WEBPAGE TEXT:
-${truncated}`;
-}
-
+/**
+ * Extract recipe from HTML content using AI.
+ *
+ * @param html - The HTML content to extract recipe from.
+ * @param url - Optional source URL of the recipe.
+ * @param allergies - Optional list of allergens to detect.
+ * @returns AIResult with extracted recipe or error.
+ */
 export async function extractRecipeWithAI(
   html: string,
   url?: string,
   allergies?: string[]
-): Promise<FullRecipeInsertDTO | null> {
+): Promise<AIResult<FullRecipeInsertDTO>> {
   // Guard: AI must be enabled
   const aiEnabled = await isAIEnabled();
 
   if (!aiEnabled) {
     aiLogger.info("AI features are disabled, skipping extraction");
 
-    return null;
+    return aiError("AI features are disabled", "AI_DISABLED");
   }
 
   aiLogger.info({ url }, "Starting AI recipe extraction");
 
-  const provider = await getAIProvider();
-  const prompt = await buildExtractionPrompt(url, html, allergies);
+  try {
+    const { model, providerName } = await getModels();
+    const settings = await getGenerationSettings();
 
-  aiLogger.debug(
-    { url, promptLength: prompt.length, prompt: prompt },
-    "Sending prompt to AI provider"
-  );
+    // Sanitize and truncate HTML content
+    const sanitized = extractSanitizedBody(html);
+    const truncated = sanitized.slice(0, 50000);
 
-  const jsonLd = await provider.generateStructuredOutput<any>(
-    prompt,
-    jsonLdRecipeSchema,
-    "You extract recipe data as JSON-LD with both metric and US measurements. Return {} if insufficient data."
-  );
-
-  if (!jsonLd || Object.keys(jsonLd).length === 0) {
-    aiLogger.error({ url }, "Empty or null response from AI provider");
-
-    return null;
-  }
-
-  jsonLd.image = extractImageCandidates(html);
-
-  aiLogger.debug(
-    {
+    // Build prompt using shared builder
+    const prompt = await buildRecipeExtractionPrompt(truncated, {
       url,
-      recipeName: jsonLd.name,
-      image: jsonLd.image,
-      metricIngredients: jsonLd.recipeIngredient?.metric?.length ?? 0,
-      usIngredients: jsonLd.recipeIngredient?.us?.length ?? 0,
-      metricSteps: jsonLd.recipeInstructions?.metric?.length ?? 0,
-      usSteps: jsonLd.recipeInstructions?.us?.length ?? 0,
-    },
-    "AI response received"
-  );
+      allergies,
+      strictAllergyDetection: true, // Use strict mode for HTML extraction
+    });
 
-  if (
-    !jsonLd.name ||
-    !jsonLd.recipeIngredient?.metric?.length ||
-    !jsonLd.recipeIngredient?.us?.length ||
-    !jsonLd.recipeInstructions?.metric?.length ||
-    !jsonLd.recipeInstructions?.us?.length
-  ) {
-    aiLogger.error("Invalid recipe data - missing required fields");
+    aiLogger.debug(
+      { url, promptLength: prompt.length, provider: providerName },
+      "Sending prompt to AI provider"
+    );
 
-    return null;
-  }
+    const result = await generateText({
+      model,
+      output: Output.object({ schema: recipeExtractionSchema }),
+      prompt,
+      system:
+        "You extract recipe data as JSON-LD with both metric and US measurements. Return valid JSON only.",
+      ...settings,
+    });
 
-  const metricVersion = {
-    ...jsonLd,
-    recipeIngredient: jsonLd.recipeIngredient.metric,
-    recipeInstructions: jsonLd.recipeInstructions.metric,
-  };
+    const jsonLd = result.output;
 
-  const normalized = await normalizeRecipeFromJson(metricVersion);
+    // Validate extraction output
+    const validation = validateExtractionOutput(jsonLd);
 
-  if (!normalized) {
-    aiLogger.error("Failed to normalize recipe from JSON-LD");
+    if (!validation.valid) {
+      aiLogger.error({ url, ...validation.details }, validation.error);
 
-    return null;
-  }
+      return aiError(validation.error!, "VALIDATION_ERROR");
+    }
 
-  const units = await getUnits();
-  const usIngredients = parseIngredientWithDefaults(jsonLd.recipeIngredient.us, units);
-  const usSteps = jsonLd.recipeInstructions.us.map((step: string, i: number) => ({
-    step,
-    order: i + 1,
-    systemUsed: "us" as const,
-  }));
+    aiLogger.debug({ url, ...getExtractionLogContext(jsonLd!, null) }, "AI response received");
 
-  // Combine both systems
-  normalized.url = url ?? null;
-  normalized.recipeIngredients = [
-    ...(normalized.recipeIngredients ?? []), // metric from normalizer
-    ...usIngredients.map((ing, i) => ({
-      ingredientId: null,
-      ingredientName: ing.description,
-      amount: ing.quantity != null ? ing.quantity : null,
-      unit: ing.unitOfMeasureID,
-      systemUsed: "us" as const,
-      order: i,
-    })),
-  ];
-  normalized.steps = [
-    ...(normalized.steps ?? []), // metric from normalizer
-    ...usSteps,
-  ];
+    // Extract image candidates from HTML
+    const imageCandidates = extractImageCandidates(html);
 
-  aiLogger.info(
-    {
+    // Normalize using shared normalizer
+    const normalized = await normalizeExtractionOutput(jsonLd!, {
       url,
-      recipeName: normalized.name,
-      totalIngredients: normalized.recipeIngredients?.length ?? 0,
-      totalSteps: normalized.steps?.length ?? 0,
-      systemUsed: normalized.systemUsed,
-      tags: normalized.tags,
-    },
-    "AI recipe extraction completed"
-  );
+      imageCandidates,
+    });
 
-  return normalized;
+    if (!normalized) {
+      aiLogger.error({ url }, "Failed to normalize recipe from JSON-LD");
+
+      return aiError("Failed to normalize recipe data", "VALIDATION_ERROR");
+    }
+
+    aiLogger.info(
+      { url, ...getExtractionLogContext(jsonLd!, normalized) },
+      "AI recipe extraction completed"
+    );
+
+    return aiSuccess(normalized, {
+      inputTokens: result.usage?.inputTokens ?? 0,
+      outputTokens: result.usage?.outputTokens ?? 0,
+      totalTokens: result.usage?.totalTokens ?? 0,
+    });
+  } catch (error) {
+    const code = mapErrorToCode(error);
+    const message = getErrorMessage(code, error instanceof Error ? error.message : undefined);
+
+    aiLogger.error({ err: error, url, code }, "Failed to extract recipe with AI");
+
+    return aiError(message, code);
+  }
 }

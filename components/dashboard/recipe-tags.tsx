@@ -1,19 +1,30 @@
 "use client";
 
 import { motion, useMotionValue } from "motion/react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Chip } from "@heroui/react";
 
 import { cssGlassBackdropChip } from "@/config/css-tokens";
+import { sortTagsWithAllergyPriority, isAllergenTag } from "@/lib/helpers";
 
 interface RecipeTagsProps {
   tags: { name: string }[];
+  /** List of allergy tag names - these will be styled as warnings and sorted first */
+  allergies?: string[];
 }
 
-export default function RecipeTags({ tags }: RecipeTagsProps) {
+export default function RecipeTags({ tags, allergies = [] }: RecipeTagsProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dragLimit, setDragLimit] = useState(0);
   const x = useMotionValue(0);
+
+  // Pre-compute allergySet for O(1) lookups
+  const allergySet = useMemo(() => new Set(allergies.map((a) => a.toLowerCase())), [allergies]);
+
+  // Sort tags: allergens first, then rest alphabetically
+  const sortedTags = useMemo(() => {
+    return sortTagsWithAllergyPriority(tags, allergies);
+  }, [tags, allergies]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -29,7 +40,13 @@ export default function RecipeTags({ tags }: RecipeTagsProps) {
   }, [tags]);
 
   return (
-    <div className="absolute inset-x-0 bottom-0 z-30 overflow-hidden p-2">
+    <div
+      className="absolute inset-x-0 bottom-0 z-30 overflow-hidden p-2"
+      role="presentation"
+      onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
       <motion.div
         ref={containerRef}
         className="flex cursor-grab gap-2 active:cursor-grabbing"
@@ -38,16 +55,24 @@ export default function RecipeTags({ tags }: RecipeTagsProps) {
         dragElastic={0.1}
         style={{ x }}
       >
-        {tags.map((t, i) => (
-          <Chip
-            key={i}
-            className={`shrink-0 text-white ${cssGlassBackdropChip}`}
-            size="sm"
-            variant="flat"
-          >
-            {t.name}
-          </Chip>
-        ))}
+        {sortedTags.map((t, i) => {
+          const isAllergen = isAllergenTag(t.name, allergySet);
+
+          return (
+            <Chip
+              key={i}
+              className={`shrink-0 ${
+                isAllergen
+                  ? "bg-warning/80 text-warning-foreground backdrop-blur-md"
+                  : `text-white ${cssGlassBackdropChip}`
+              }`}
+              size="sm"
+              variant="flat"
+            >
+              {t.name}
+            </Chip>
+          );
+        })}
       </motion.div>
     </div>
   );

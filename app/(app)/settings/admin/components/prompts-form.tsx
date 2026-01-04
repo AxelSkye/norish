@@ -2,18 +2,22 @@
 
 import { useState, useEffect } from "react";
 import { Textarea, Button, Spinner } from "@heroui/react";
-import { ArrowPathIcon } from "@heroicons/react/16/solid";
+import { ArrowPathIcon, CheckIcon } from "@heroicons/react/16/solid";
+import { useTranslations } from "next-intl";
 
 import { useAdminSettingsContext } from "../context";
 
 import { ServerConfigKeys } from "@/server/db/zodSchemas/server-config";
 
 export default function PromptsForm() {
+  const t = useTranslations("settings.admin.promptsConfig");
+  const tActions = useTranslations("common.actions");
   const { prompts, isLoading, updatePrompts, restoreDefaultConfig } = useAdminSettingsContext();
 
   const [recipeExtraction, setRecipeExtraction] = useState("");
   const [unitConversion, setUnitConversion] = useState("");
   const [nutritionEstimation, setNutritionEstimation] = useState("");
+  const [autoTagging, setAutoTagging] = useState("");
   const [saving, setSaving] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
@@ -24,6 +28,7 @@ export default function PromptsForm() {
       setRecipeExtraction(prompts.recipeExtraction);
       setUnitConversion(prompts.unitConversion);
       setNutritionEstimation(prompts.nutritionEstimation);
+      setAutoTagging(prompts.autoTagging);
     }
   }, [prompts]);
 
@@ -33,11 +38,12 @@ export default function PromptsForm() {
       const changed =
         recipeExtraction !== prompts.recipeExtraction ||
         unitConversion !== prompts.unitConversion ||
-        nutritionEstimation !== prompts.nutritionEstimation;
+        nutritionEstimation !== prompts.nutritionEstimation ||
+        autoTagging !== prompts.autoTagging;
 
       setHasChanges(changed);
     }
-  }, [recipeExtraction, unitConversion, nutritionEstimation, prompts]);
+  }, [recipeExtraction, unitConversion, nutritionEstimation, autoTagging, prompts]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -45,6 +51,7 @@ export default function PromptsForm() {
       recipeExtraction,
       unitConversion,
       nutritionEstimation,
+      autoTagging,
     }).finally(() => {
       setSaving(false);
     });
@@ -69,11 +76,11 @@ export default function PromptsForm() {
     <div className="flex flex-col gap-6 p-2">
       <div className="flex flex-col gap-2">
         <Textarea
-          description="This prompt is used when extracting recipe data from web pages or video transcripts."
-          label="Recipe Extraction Prompt"
+          description={t("recipeExtractionDescription")}
+          label={t("recipeExtraction")}
           maxRows={15}
           minRows={6}
-          placeholder="Enter the recipe extraction prompt..."
+          placeholder={t("recipeExtractionPlaceholder")}
           value={recipeExtraction}
           onValueChange={setRecipeExtraction}
         />
@@ -81,12 +88,11 @@ export default function PromptsForm() {
 
       <div className="flex flex-col gap-2">
         <Textarea
-          description={`This prompt is used when converting recipe measurements between metric and US
-              systems. Available variables: {{sourceSystem}}, {{targetSystem}}, {{units}}`}
-          label="Unit Conversion Prompt"
+          description={t("unitConversionDescription")}
+          label={t("unitConversion")}
           maxRows={10}
           minRows={4}
-          placeholder="Enter the unit conversion prompt..."
+          placeholder={t("unitConversionPlaceholder")}
           value={unitConversion}
           onValueChange={setUnitConversion}
         />
@@ -94,14 +100,25 @@ export default function PromptsForm() {
 
       <div className="flex flex-col gap-2">
         <Textarea
-          description={`This prompt is used when estimating nutrition information for a recipe.
-              Available variables: {{recipeName}}, {{servings}}, {{ingredients}}`}
-          label="Nutrition Estimation Prompt"
+          description={t("nutritionEstimationDescription")}
+          label={t("nutritionEstimation")}
           maxRows={15}
           minRows={6}
-          placeholder="Enter the nutrition estimation prompt..."
+          placeholder={t("nutritionEstimationPlaceholder")}
           value={nutritionEstimation}
           onValueChange={setNutritionEstimation}
+        />
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <Textarea
+          description={t("autoTaggingDescription")}
+          label={t("autoTagging")}
+          maxRows={15}
+          minRows={6}
+          placeholder={t("autoTaggingPlaceholder")}
+          value={autoTagging}
+          onValueChange={setAutoTagging}
         />
       </div>
 
@@ -113,10 +130,16 @@ export default function PromptsForm() {
           variant="flat"
           onPress={handleRestoreDefaults}
         >
-          Restore Defaults
+          {tActions("restoreDefaults")}
         </Button>
-        <Button color="primary" isDisabled={!hasChanges} isLoading={saving} onPress={handleSave}>
-          Save Changes
+        <Button
+          color="primary"
+          isDisabled={!hasChanges}
+          isLoading={saving}
+          startContent={<CheckIcon className="h-5 w-5" />}
+          onPress={handleSave}
+        >
+          {tActions("save")}
         </Button>
       </div>
     </div>

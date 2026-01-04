@@ -14,6 +14,11 @@ import {
   startNutritionEstimationWorker,
   stopNutritionEstimationWorker,
 } from "@/server/queue/nutrition-estimation/worker";
+import { startAutoTaggingWorker, stopAutoTaggingWorker } from "@/server/queue/auto-tagging/worker";
+import {
+  startAllergyDetectionWorker,
+  stopAllergyDetectionWorker,
+} from "@/server/queue/allergy-detection/worker";
 import { startCaldavSyncWorker, stopCaldavSyncWorker } from "@/server/queue/caldav-sync/worker";
 import {
   startScheduledTasksWorker,
@@ -37,6 +42,12 @@ export async function startWorkers(): Promise<void> {
   startNutritionEstimationWorker();
   log.info("Nutrition estimation worker started");
 
+  startAutoTaggingWorker();
+  log.info("Auto-tagging worker started");
+
+  startAllergyDetectionWorker();
+  log.info("Allergy detection worker started");
+
   startCaldavSyncWorker();
   log.info("CalDAV sync worker started");
 
@@ -50,6 +61,8 @@ export async function stopWorkers(): Promise<void> {
   await stopImageImportWorker();
   await stopPasteImportWorker();
   await stopNutritionEstimationWorker();
+  await stopAutoTaggingWorker();
+  await stopAllergyDetectionWorker();
   await stopCaldavSyncWorker();
   await stopScheduledTasksWorker();
   log.info("All BullMQ workers stopped");

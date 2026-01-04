@@ -55,13 +55,16 @@ async function processImageImportJob(job: Job<ImageImportJobData>): Promise<void
   }
 
   // Extract recipe from images using AI vision
-  const parsedRecipe = await extractRecipeFromImages(files, allergyNames);
+  const result = await extractRecipeFromImages(files, allergyNames);
 
-  if (!parsedRecipe) {
+  if (!result.success) {
     throw new Error(
-      "Failed to extract recipe from images. The images may not contain a valid recipe."
+      result.error ||
+        "Failed to extract recipe from images. The images may not contain a valid recipe."
     );
   }
+
+  const parsedRecipe = result.data;
 
   // Save the recipe
   const createdId = await createRecipeWithRefs(recipeId, userId, parsedRecipe);
@@ -76,10 +79,15 @@ async function processImageImportJob(job: Job<ImageImportJobData>): Promise<void
     log.info({ jobId: job.id, recipeId: createdId }, "Image recipe imported successfully");
 
     // Emit imported event (replaces skeleton with actual recipe)
+    // Image import is always AI-based, so no processing will follow - show imported toast
     emitByPolicy(recipeEmitter, viewPolicy, ctx, "imported", {
       recipe: dashboardDto,
       pendingRecipeId: recipeId,
+      toast: "imported",
     });
+
+    // Note: No auto-tagging job queued - image import is always AI-based,
+    // and AI extraction prompts already include auto-tagging instructions
   }
 }
 

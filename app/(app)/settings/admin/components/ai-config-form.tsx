@@ -1,30 +1,103 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { Input, Button, Switch, Select, SelectItem, Slider } from "@heroui/react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import {
+  Input,
+  Button,
+  Switch,
+  Select,
+  SelectItem,
+  Slider,
+  Autocomplete,
+  AutocompleteItem,
+} from "@heroui/react";
 import { CheckIcon, BeakerIcon, XMarkIcon } from "@heroicons/react/16/solid";
+import { useTranslations } from "next-intl";
 
 import { useAdminSettingsContext } from "../context";
 
-import { ServerConfigKeys, type AIConfig } from "@/server/db/zodSchemas/server-config";
+import {
+  ServerConfigKeys,
+  type AIConfig,
+  type AutoTaggingMode,
+} from "@/server/db/zodSchemas/server-config";
+import { useAvailableModelsQuery } from "@/hooks/admin";
 import SecretInput from "@/components/shared/secret-input";
 
 export default function AIConfigForm() {
+  const t = useTranslations("settings.admin.aiConfig");
+  const tActions = useTranslations("common.actions");
   const { aiConfig, updateAIConfig, testAIEndpoint, fetchConfigSecret } = useAdminSettingsContext();
 
   const [enabled, setEnabled] = useState(aiConfig?.enabled ?? false);
   const [provider, setProvider] = useState(aiConfig?.provider ?? "openai");
   const [endpoint, setEndpoint] = useState(aiConfig?.endpoint ?? "");
-  const [model, setModel] = useState(aiConfig?.model ?? "gpt-4o-mini");
+  const [model, setModel] = useState(aiConfig?.model ?? "gpt-5-mini");
   const [visionModel, setVisionModel] = useState(aiConfig?.visionModel ?? "");
   const [apiKey, setApiKey] = useState("");
   const [temperature, setTemperature] = useState(aiConfig?.temperature ?? 0);
   const [maxTokens, setMaxTokens] = useState(aiConfig?.maxTokens ?? 10000);
   const [autoTagAllergies, setAutoTagAllergies] = useState(aiConfig?.autoTagAllergies ?? true);
   const [alwaysUseAI, setAlwaysUseAI] = useState(aiConfig?.alwaysUseAI ?? false);
+  const [autoTaggingMode, setAutoTaggingMode] = useState<AutoTaggingMode>(
+    aiConfig?.autoTaggingMode ?? "disabled"
+  );
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; error?: string } | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // Fetch available models from the provider
+  const needsEndpoint = provider !== "openai" && provider !== "perplexity";
+  const needsApiKey =
+    provider === "openai" || provider === "generic-openai" || provider === "perplexity";
+  const isApiKeyConfigured = !!aiConfig?.apiKey;
+
+  const canFetchModels =
+    enabled &&
+    (provider === "openai" || provider === "perplexity"
+      ? apiKey || isApiKeyConfigured
+      : provider === "ollama" || provider === "lm-studio"
+        ? endpoint
+        : endpoint); // generic-openai needs endpoint
+
+  const { models: availableModels, isLoading: isLoadingModels } = useAvailableModelsQuery({
+    provider: provider as AIConfig["provider"],
+    endpoint: endpoint || undefined,
+    apiKey: apiKey || undefined,
+    enabled: !!canFetchModels,
+  });
+
+  // Create model options for autocomplete (includes current value even if not in list)
+  const modelOptions = useMemo(() => {
+    const options = availableModels.map((m) => ({
+      value: m.id,
+      label: m.name,
+      supportsVision: m.supportsVision,
+    }));
+
+    // Add current model if not in list (allows keeping custom/typed values)
+    if (model && !options.some((o) => o.value === model)) {
+      options.unshift({ value: model, label: model, supportsVision: undefined });
+    }
+
+    return options;
+  }, [availableModels, model]);
+
+  // Vision model options (filter to vision-capable models if available)
+  const visionModelOptions = useMemo(() => {
+    const options = availableModels.map((m) => ({
+      value: m.id,
+      label: m.name,
+      supportsVision: m.supportsVision,
+    }));
+
+    // Add current vision model if not in list
+    if (visionModel && !options.some((o) => o.value === visionModel)) {
+      options.unshift({ value: visionModel, label: visionModel, supportsVision: undefined });
+    }
+
+    return options;
+  }, [availableModels, visionModel]);
 
   useEffect(() => {
     if (aiConfig) {
@@ -37,12 +110,9 @@ export default function AIConfigForm() {
       setMaxTokens(aiConfig.maxTokens);
       setAutoTagAllergies(aiConfig.autoTagAllergies ?? true);
       setAlwaysUseAI(aiConfig.alwaysUseAI ?? false);
+      setAutoTaggingMode(aiConfig.autoTaggingMode ?? "disabled");
     }
   }, [aiConfig]);
-
-  const needsEndpoint = provider !== "openai";
-  const needsApiKey = provider === "openai" || provider === "generic-openai";
-  const isApiKeyConfigured = !!aiConfig?.apiKey;
 
   // Validation: Can't enable AI without valid config
   const hasValidConfig =
@@ -56,6 +126,28 @@ export default function AIConfigForm() {
   const handleRevealApiKey = useCallback(async () => {
     return await fetchConfigSecret(ServerConfigKeys.AI_CONFIG, "apiKey");
   }, [fetchConfigSecret]);
+
+  // Clear model fields when provider changes to avoid invalid model selection
+  const handleProviderChange = (newProvider: AIConfig["provider"]) => {
+    if (newProvider !== provider) {
+      setProvider(newProvider);
+      // Set sensible defaults based on provider
+      if (newProvider === "openai") {
+        setModel("gpt-5-mini");
+        setVisionModel("");
+      } else if (newProvider === "perplexity") {
+        setModel("sonar");
+        setVisionModel("");
+      } else {
+        setModel("");
+        setVisionModel("");
+      }
+      // Clear endpoint when switching to OpenAI or Perplexity (don't need one)
+      if (newProvider === "openai" || newProvider === "perplexity") {
+        setEndpoint("");
+      }
+    }
+  };
 
   const handleTest = async () => {
     setTesting(true);
@@ -89,6 +181,7 @@ export default function AIConfigForm() {
         maxTokens,
         autoTagAllergies,
         alwaysUseAI,
+        autoTaggingMode: autoTaggingMode as AIConfig["autoTaggingMode"],
       });
     } finally {
       setSaving(false);
@@ -99,65 +192,96 @@ export default function AIConfigForm() {
     <div className="flex flex-col gap-4 p-2">
       <div className="flex items-center justify-between">
         <div className="flex flex-col gap-1">
-          <span className="font-medium">Enable AI Features</span>
-          <span className="text-default-500 text-base">
-            Use AI to extract recipes from unstructured content
-          </span>
+          <span className="font-medium">{t("enableAI")}</span>
+          <span className="text-default-500 text-base">{t("enableAIDescription")}</span>
         </div>
         <Switch color="success" isSelected={enabled} onValueChange={setEnabled} />
       </div>
 
       {showValidationWarning && (
         <div className="text-warning bg-warning/10 rounded-lg p-3 text-base">
-          Configure the AI provider settings below to enable AI features.
+          {t("configureWarning")}
         </div>
       )}
 
       <Select
         isDisabled={!enabled}
-        label="AI Provider"
+        label={t("provider")}
         selectedKeys={[provider]}
-        onSelectionChange={(keys) => setProvider(Array.from(keys)[0] as AIConfig["provider"])}
+        onSelectionChange={(keys) =>
+          handleProviderChange(Array.from(keys)[0] as AIConfig["provider"])
+        }
       >
-        <SelectItem key="openai">OpenAI</SelectItem>
-        <SelectItem key="ollama">Ollama (Local)</SelectItem>
-        <SelectItem key="lm-studio">LM Studio (Local)</SelectItem>
-        <SelectItem key="generic-openai">Generic OpenAI-compatible</SelectItem>
+        <SelectItem key="openai">{t("providers.openai")}</SelectItem>
+        <SelectItem key="perplexity">{t("providers.perplexity")}</SelectItem>
+        <SelectItem key="ollama">{t("providers.ollama")}</SelectItem>
+        <SelectItem key="lm-studio">{t("providers.lmStudio")}</SelectItem>
+        <SelectItem key="generic-openai">{t("providers.genericOpenai")}</SelectItem>
       </Select>
 
       {needsEndpoint && (
         <Input
           isDisabled={!enabled}
-          label="Endpoint URL"
+          label={t("endpointUrl")}
           placeholder={provider === "ollama" ? "http://localhost:11434" : "http://localhost:1234"}
           value={endpoint}
           onValueChange={setEndpoint}
         />
       )}
 
-      <Input
+      <Autocomplete
+        allowsCustomValue
+        defaultItems={modelOptions}
+        inputValue={model}
         isDisabled={!enabled}
-        label="Model"
-        placeholder={provider === "openai" ? "gpt-4o-mini" : "llama3"}
-        value={model}
-        onValueChange={setModel}
-      />
+        isLoading={isLoadingModels}
+        label={t("model")}
+        placeholder={provider === "openai" ? "gpt-5-mini" : "llama3"}
+        onInputChange={setModel}
+        onSelectionChange={(key) => key && setModel(key as string)}
+      >
+        {(item) => (
+          <AutocompleteItem key={item.value} textValue={item.label}>
+            <div className="flex items-center justify-between gap-2">
+              <span>{item.label}</span>
+              {item.supportsVision && (
+                <span className="text-success-500 text-xs">{t("vision")}</span>
+              )}
+            </div>
+          </AutocompleteItem>
+        )}
+      </Autocomplete>
 
-      <Input
-        description="Optional: Use a different model for image/vision tasks. Leave empty to use the model above."
+      <Autocomplete
+        allowsCustomValue
+        defaultItems={visionModelOptions}
+        description={t("visionModelDescription")}
+        inputValue={visionModel}
         isDisabled={!enabled}
-        label="Vision Model (Optional)"
+        isLoading={isLoadingModels}
+        label={t("visionModel")}
         placeholder={provider === "openai" ? "gpt-4o" : ""}
-        value={visionModel}
-        onValueChange={setVisionModel}
-      />
+        onInputChange={setVisionModel}
+        onSelectionChange={(key) => key && setVisionModel(key as string)}
+      >
+        {(item) => (
+          <AutocompleteItem key={item.value} textValue={item.label}>
+            <div className="flex items-center justify-between gap-2">
+              <span>{item.label}</span>
+              {item.supportsVision && (
+                <span className="text-success-500 text-xs">{t("vision")}</span>
+              )}
+            </div>
+          </AutocompleteItem>
+        )}
+      </Autocomplete>
 
       {needsApiKey && (
         <SecretInput
           isConfigured={isApiKeyConfigured}
           isDisabled={!enabled}
-          label="API Key"
-          placeholder="Enter API key"
+          label={t("apiKey")}
+          placeholder={t("apiKeyPlaceholder")}
           value={apiKey}
           onReveal={handleRevealApiKey}
           onValueChange={setApiKey}
@@ -165,7 +289,7 @@ export default function AIConfigForm() {
       )}
 
       <div className="flex flex-col gap-2">
-        <label className="text-sm font-medium">Temperature: {temperature}</label>
+        <label className="text-sm font-medium">{t("temperature", { value: temperature })}</label>
         <Slider
           aria-label="Temperature"
           className="max-w-md"
@@ -176,14 +300,12 @@ export default function AIConfigForm() {
           value={temperature}
           onChange={(v) => setTemperature(v as number)}
         />
-        <span className="text-default-500 text-xs">
-          Lower = more focused, Higher = more creative
-        </span>
+        <span className="text-default-500 text-xs">{t("temperatureHint")}</span>
       </div>
 
       <Input
         isDisabled={!enabled}
-        label="Max Tokens"
+        label={t("maxTokens")}
         type="number"
         value={maxTokens.toString()}
         onValueChange={(v) => setMaxTokens(parseInt(v) || 10000)}
@@ -191,10 +313,8 @@ export default function AIConfigForm() {
 
       <div className="flex items-center justify-between">
         <div className="flex flex-col gap-1">
-          <span className="font-medium">Auto-detect Allergy Tags</span>
-          <span className="text-default-500 text-base">
-            Automatically add allergy-related tags when importing recipes
-          </span>
+          <span className="font-medium">{t("autoTagAllergies")}</span>
+          <span className="text-default-500 text-base">{t("autoTagAllergiesDescription")}</span>
         </div>
         <Switch
           color="success"
@@ -206,10 +326,8 @@ export default function AIConfigForm() {
 
       <div className="flex items-center justify-between">
         <div className="flex flex-col gap-1">
-          <span className="font-medium">Always Use AI Importing</span>
-          <span className="text-default-500 text-base">
-            Skip structured parsers and extract recipes using AI only
-          </span>
+          <span className="font-medium">{t("alwaysUseAI")}</span>
+          <span className="text-default-500 text-base">{t("alwaysUseAIDescription")}</span>
         </div>
         <Switch
           color="success"
@@ -218,6 +336,19 @@ export default function AIConfigForm() {
           onValueChange={setAlwaysUseAI}
         />
       </div>
+
+      <Select
+        description={t("autoTaggingModeDescription")}
+        isDisabled={!enabled}
+        label={t("autoTaggingMode")}
+        selectedKeys={[autoTaggingMode]}
+        onSelectionChange={(keys) => setAutoTaggingMode(Array.from(keys)[0] as AutoTaggingMode)}
+      >
+        <SelectItem key="disabled">{t("autoTaggingModes.disabled")}</SelectItem>
+        <SelectItem key="predefined">{t("autoTaggingModes.predefined")}</SelectItem>
+        <SelectItem key="predefined_db">{t("autoTaggingModes.predefinedDb")}</SelectItem>
+        <SelectItem key="freeform">{t("autoTaggingModes.freeform")}</SelectItem>
+      </Select>
 
       {testResult && (
         <div
@@ -228,7 +359,7 @@ export default function AIConfigForm() {
           {testResult.success ? (
             <>
               <CheckIcon className="h-4 w-4" />
-              Connection successful
+              {t("connectionSuccess")}
             </>
           ) : (
             <>
@@ -247,7 +378,7 @@ export default function AIConfigForm() {
           variant="flat"
           onPress={handleTest}
         >
-          Test Connection
+          {t("testConnection")}
         </Button>
         <Button
           color="primary"
@@ -256,7 +387,7 @@ export default function AIConfigForm() {
           startContent={<CheckIcon className="h-5 w-5" />}
           onPress={handleSave}
         >
-          Save
+          {tActions("save")}
         </Button>
       </div>
     </div>

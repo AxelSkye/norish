@@ -1,60 +1,26 @@
 "use client";
 
-import { createContext, useContext, ReactNode, useMemo, useCallback, useState } from "react";
+import type { SearchField } from "@/types";
 
-import { FilterMode, SortOrder } from "@/types";
+import { createContext, useContext, ReactNode, useMemo } from "react";
 
-// Filter state for recipes
-export type RecipeFilters = {
-  rawInput: string;
-  searchTags: string[];
-  filterMode: FilterMode;
-  sortMode: SortOrder;
-  showFavoritesOnly: boolean;
-  minRating: number | null;
-};
+import { useRecipeFilters, type RecipeFilters } from "@/hooks/recipes/use-recipe-filters";
 
 type FiltersCtx = {
   filters: RecipeFilters;
   setFilters: (filters: Partial<RecipeFilters>) => void;
   clearFilters: () => void;
+  toggleSearchField: (field: SearchField) => void;
 };
 
 const RecipesFiltersContext = createContext<FiltersCtx | null>(null);
 
 export function RecipesFiltersProvider({ children }: { children: ReactNode }) {
-  // Filter state
-  const [filters, setFiltersState] = useState<RecipeFilters>({
-    rawInput: "",
-    searchTags: [],
-    filterMode: "AND",
-    sortMode: "dateDesc",
-    showFavoritesOnly: false,
-    minRating: null,
-  });
-
-  const setFilters = useCallback((newFilters: Partial<RecipeFilters>) => {
-    setFiltersState((prev) => ({ ...prev, ...newFilters }));
-  }, []);
-
-  const clearFilters = useCallback(() => {
-    setFiltersState({
-      rawInput: "",
-      searchTags: [],
-      filterMode: "AND",
-      sortMode: "dateDesc",
-      showFavoritesOnly: false,
-      minRating: null,
-    });
-  }, []);
+  const { filters, setFilters, clearFilters, toggleSearchField } = useRecipeFilters();
 
   const value = useMemo<FiltersCtx>(
-    () => ({
-      filters,
-      setFilters,
-      clearFilters,
-    }),
-    [filters, setFilters, clearFilters]
+    () => ({ filters, setFilters, clearFilters, toggleSearchField }),
+    [filters, setFilters, clearFilters, toggleSearchField]
   );
 
   return <RecipesFiltersContext.Provider value={value}>{children}</RecipesFiltersContext.Provider>;
@@ -67,3 +33,6 @@ export function useRecipesFiltersContext() {
 
   return ctx;
 }
+
+// Re-export types for convenience
+export type { RecipeFilters };

@@ -7,18 +7,21 @@ import {
   PencilSquareIcon,
   TrashIcon,
   DevicePhoneMobileIcon,
+  SparklesIcon,
 } from "@heroicons/react/20/solid";
 import { EllipsisHorizontalIcon } from "@heroicons/react/16/solid";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 
 import { useRecipeContextRequired } from "../context";
 
 import { useWakeLockContext } from "./wake-lock-context";
 
-import { cssButtonPill } from "@/config/css-tokens";
+import { cssButtonPill, cssAIGradientText, cssAIIconColor } from "@/config/css-tokens";
 import { MiniGroceries, MiniCalendar } from "@/components/Panel/consumers";
 import { usePermissionsContext } from "@/context/permissions-context";
 import { useRecipesContext } from "@/context/recipes-context";
+import { useActiveAllergies } from "@/hooks/user";
 
 type Props = { id: string };
 
@@ -28,17 +31,24 @@ type MenuItem = {
   icon: React.ReactNode;
   onPress: () => void;
   className?: string;
+  labelClassName?: string;
   iconClassName?: string;
+  isDisabled?: boolean;
 };
 
 export default function ActionsMenu({ id }: Props) {
+  const [isDropdownOpen, setIsDropdownOpen] = React.useState(false);
   const [openCalendar, setOpenCalendar] = React.useState(false);
   const [openGroceries, setOpenGroceries] = React.useState(false);
   const router = useRouter();
-  const { canEditRecipe, canDeleteRecipe } = usePermissionsContext();
+  const { canEditRecipe, canDeleteRecipe, isAutoTaggingEnabled, isAIEnabled } =
+    usePermissionsContext();
   const { deleteRecipe } = useRecipesContext();
-  const { recipe } = useRecipeContextRequired();
+  const { recipe, isAutoTagging, triggerAutoTag, isDetectingAllergies, triggerAllergyDetection } =
+    useRecipeContextRequired();
+  const { allergies } = useActiveAllergies();
   const { isSupported, isActive, toggle } = useWakeLockContext();
+  const t = useTranslations("recipes.actions");
 
   const canEdit = recipe.userId ? canEditRecipe(recipe.userId) : true;
   const canDelete = recipe.userId ? canDeleteRecipe(recipe.userId) : true;
@@ -52,13 +62,13 @@ export default function ActionsMenu({ id }: Props) {
     const items: MenuItem[] = [
       {
         key: "plan",
-        label: "Plan",
+        label: t("plan"),
         icon: <CalendarDaysIcon className="size-4" />,
         onPress: () => setOpenCalendar(true),
       },
       {
         key: "groceries",
-        label: "Groceries",
+        label: t("groceries"),
         icon: <ShoppingCartIcon className="size-4" />,
         onPress: () => setOpenGroceries(true),
       },
@@ -67,7 +77,7 @@ export default function ActionsMenu({ id }: Props) {
     if (canEdit) {
       items.push({
         key: "edit",
-        label: "Edit",
+        label: t("edit"),
         icon: <PencilSquareIcon className="size-4" />,
         onPress: () => router.push(`/recipes/edit/${id}`),
       });
@@ -76,35 +86,83 @@ export default function ActionsMenu({ id }: Props) {
     if (isSupported) {
       items.push({
         key: "wake-lock",
-        label: isActive ? "Screen On" : "Keep Screen On",
+        label: isActive ? t("screenOn") : t("keepScreenOn"),
         icon: <DevicePhoneMobileIcon className="size-4" />,
         onPress: toggle,
-        className: isActive ? "text-success" : "",
+        labelClassName: isActive ? "text-success" : "",
         iconClassName: isActive ? "text-success" : "text-default-400",
+      });
+    }
+
+    if (isAutoTaggingEnabled && canEdit) {
+      items.push({
+        key: "auto-tag",
+        label: isAutoTagging ? t("autoTagging") : t("autoTag"),
+        icon: <SparklesIcon className="size-4" />,
+        onPress: triggerAutoTag,
+        labelClassName: cssAIGradientText,
+        iconClassName: cssAIIconColor,
+        isDisabled: isAutoTagging,
+      });
+    }
+
+    // Show allergy detection when AI is enabled, user can edit, and allergies are configured
+    const hasAllergies = allergies.length > 0;
+
+    if (isAIEnabled && canEdit && hasAllergies) {
+      items.push({
+        key: "detect-allergies",
+        label: isDetectingAllergies ? t("detectingAllergies") : t("detectAllergies"),
+        icon: <SparklesIcon className="size-4" />,
+        onPress: triggerAllergyDetection,
+        labelClassName: cssAIGradientText,
+        iconClassName: cssAIIconColor,
+        isDisabled: isDetectingAllergies,
       });
     }
 
     if (canDelete) {
       items.push({
         key: "delete",
-        label: "Delete",
+        label: t("delete"),
         icon: <TrashIcon className="size-4" />,
         onPress: handleDelete,
-        className: "text-danger",
+        labelClassName: "text-danger",
         iconClassName: "text-danger",
       });
     }
 
     return items;
-  }, [canEdit, canDelete, handleDelete, id, router, isSupported, isActive, toggle]);
+  }, [
+    canEdit,
+    canDelete,
+    handleDelete,
+    id,
+    router,
+    isSupported,
+    isActive,
+    toggle,
+    t,
+    isAutoTaggingEnabled,
+    isAutoTagging,
+    triggerAutoTag,
+    isAIEnabled,
+    allergies,
+    isDetectingAllergies,
+    triggerAllergyDetection,
+  ]);
 
   return (
     <>
-      <Dropdown>
+      <Dropdown
+        classNames={{ content: "z-[500]" }}
+        isOpen={isDropdownOpen}
+        onOpenChange={setIsDropdownOpen}
+      >
         <DropdownTrigger>
           <Button
             isIconOnly
-            aria-label="Actions"
+            aria-label={t("actionsLabel")}
             className="transition active:scale-95"
             size="sm"
             variant="light"
@@ -113,7 +171,7 @@ export default function ActionsMenu({ id }: Props) {
           </Button>
         </DropdownTrigger>
 
-        <DropdownMenu aria-label="Recipe actions" items={menuItems}>
+        <DropdownMenu aria-label={t("actionsLabel")} items={menuItems}>
           {(item) => (
             <DropdownItem
               key={item.key}
@@ -121,15 +179,21 @@ export default function ActionsMenu({ id }: Props) {
             >
               <Button
                 className={`w-full justify-start bg-transparent ${cssButtonPill} ${item.className ?? ""}`}
+                isDisabled={item.isDisabled}
                 radius="full"
                 size="md"
                 startContent={
                   <span className={item.iconClassName ?? "text-default-400"}>{item.icon}</span>
                 }
                 variant="light"
-                onPress={item.onPress}
+                onPress={() => {
+                  setIsDropdownOpen(false);
+                  item.onPress();
+                }}
               >
-                <span className="text-sm font-medium">{item.label}</span>
+                <span className={`text-sm font-medium ${item.labelClassName ?? ""}`}>
+                  {item.label}
+                </span>
               </Button>
             </DropdownItem>
           )}

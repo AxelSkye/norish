@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { useScroll, useMotionValueEvent } from "motion/react";
 import { useRef, useState, useEffect, useCallback } from "react";
 
@@ -16,14 +17,16 @@ export function useAutoHide({
   topOffset = 50,
   disabled = false,
 }: AutoHideOptions = {}) {
+  const pathname = usePathname();
   const { scrollY } = useScroll();
   const [isVisible, setIsVisible] = useState(true);
   const lastScrollY = useRef(0);
   const scrollTimeout = useRef<NodeJS.Timeout | null>(null);
   const isHoveringRef = useRef(false);
-  const hasScrolledRef = useRef(false);
-  const isMountedRef = useRef(false);
   const [isScrollable, setIsScrollable] = useState(true);
+
+  // Brief pause after route change to ignore scroll restoration
+  const ignoreScrollUntil = useRef(0);
 
   // Check if page is scrollable
   useEffect(() => {
@@ -58,31 +61,32 @@ export function useAutoHide({
 
   const hide = useCallback(() => {
     if (disabled || !isScrollable) return;
-    if (!isHoveringRef.current && hasScrolledRef.current) {
+    if (!isHoveringRef.current) {
       setIsVisible(false);
     }
   }, [disabled, isScrollable]);
+
+  // Reset state on route change - show nav and ignore scroll events briefly
+  useEffect(() => {
+    setIsVisible(true);
+    if (scrollTimeout.current) {
+      clearTimeout(scrollTimeout.current);
+      scrollTimeout.current = null;
+    }
+    // Ignore scroll events for 300ms to let scroll restoration settle
+    ignoreScrollUntil.current = Date.now() + 300;
+    // Sync lastScrollY after scroll restoration completes
+    const timer = setTimeout(() => {
+      lastScrollY.current = scrollY.get();
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [pathname, scrollY]);
 
   // Initialize lastScrollY on mount
   useEffect(() => {
     lastScrollY.current = scrollY.get();
   }, [scrollY]);
-
-  // Detect actual user scroll/touch gestures
-  useEffect(() => {
-    const handleUserScroll = () => {
-      isMountedRef.current = true;
-    };
-
-    // Listen for actual user interactions that cause scroll
-    window.addEventListener("wheel", handleUserScroll, { passive: true, once: true });
-    window.addEventListener("touchmove", handleUserScroll, { passive: true, once: true });
-
-    return () => {
-      window.removeEventListener("wheel", handleUserScroll);
-      window.removeEventListener("touchmove", handleUserScroll);
-    };
-  }, []);
 
   useMotionValueEvent(scrollY, "change", (latest) => {
     const prev = lastScrollY.current;
@@ -94,14 +98,12 @@ export function useAutoHide({
       return;
     }
 
-    if (!isMountedRef.current) {
+    // Ignore scroll events during route change scroll restoration
+    if (Date.now() < ignoreScrollUntil.current) {
       lastScrollY.current = latest;
 
       return;
     }
-
-    // User has now actually scrolled
-    hasScrolledRef.current = true;
 
     // Always visible near top
     if (latest < topOffset) {
@@ -148,8 +150,6 @@ export function useAutoHide({
 
   const onHoverEnd = useCallback(() => {
     isHoveringRef.current = false;
-    // Only auto-hide on hover end if user has actually scrolled
-    if (!hasScrolledRef.current) return;
     const currentScroll = scrollY.get();
 
     if (currentScroll > topOffset && isScrollable) {

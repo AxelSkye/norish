@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useTransition, useCallback, ChangeEvent } from "react";
+import { useState, useTransition, useCallback, ChangeEvent, memo } from "react";
 import { Virtuoso } from "react-virtuoso";
 import { Image, Input, Button } from "@heroui/react";
 import { motion, AnimatePresence } from "motion/react";
 import { PlusIcon } from "@heroicons/react/16/solid";
+import { useTranslations } from "next-intl";
 
 import Panel from "@/components/Panel/Panel";
 import { RecipeDashboardDTO, Slot } from "@/types";
@@ -20,6 +21,38 @@ type MiniRecipesProps = {
   date: Date;
 };
 
+// Memoized recipe item to prevent re-renders during scroll
+const MiniRecipeItem = memo(function MiniRecipeItem({
+  recipe,
+  onPlan,
+}: {
+  recipe: RecipeDashboardDTO;
+  onPlan: (recipe: RecipeDashboardDTO, slot: Slot) => void;
+}) {
+  const subtitle = (recipe.description?.trim() || "").slice(0, 140);
+
+  return (
+    <SlotDropdown ariaLabel="Choose slot" onSelectSlot={(slot) => onPlan(recipe, slot)}>
+      <div className="hover:bg-default-100 flex cursor-pointer items-start gap-3 rounded-md px-2 py-2">
+        <div className="bg-default-200 relative h-20 w-20 shrink-0 overflow-hidden rounded-md">
+          {recipe.image && (
+            <Image
+              removeWrapper
+              alt={recipe.name}
+              className="h-full w-full object-cover"
+              src={recipe.image}
+            />
+          )}
+        </div>
+        <div className="flex min-w-0 flex-col">
+          <div className="truncate text-base font-medium">{recipe.name}</div>
+          {subtitle && <div className="text-default-500 truncate text-base">{subtitle}</div>}
+        </div>
+      </div>
+    </SlotDropdown>
+  );
+});
+
 function MiniRecipesContent({
   date,
   onOpenChange,
@@ -27,6 +60,7 @@ function MiniRecipesContent({
   date: Date;
   onOpenChange: (open: boolean) => void;
 }) {
+  const t = useTranslations("calendar.panel");
   const [rawInput, setRawInput] = useState("");
   const [search, setSearch] = useState("");
   const [, startTransition] = useTransition();
@@ -84,13 +118,13 @@ function MiniRecipesContent({
     return (
       <div className="flex min-h-0 flex-1 flex-col gap-3">
         <Input
-          placeholder="Search recipes or add notes..."
+          placeholder={t("searchPlaceholder")}
           style={{ fontSize: "16px" }}
           value={rawInput}
           onChange={handleInputChange}
         />
         <div className="flex flex-1 items-center justify-center text-base text-red-500">
-          Failed to load recipes.
+          {t("failedToLoadRecipes")}
         </div>
       </div>
     );
@@ -101,7 +135,7 @@ function MiniRecipesContent({
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
       <Input
-        placeholder="Search recipes or add notes..."
+        placeholder={t("searchPlaceholder")}
         style={{ fontSize: "16px" }}
         value={rawInput}
         onChange={handleInputChange}
@@ -124,7 +158,7 @@ function MiniRecipesContent({
                 startContent={<PlusIcon className="h-4 w-4 shrink-0" />}
                 variant="solid"
               >
-                <span className="truncate">Add Note: {rawInput}</span>
+                <span className="truncate">{t("addNote", { input: rawInput })}</span>
               </Button>
             </SlotDropdown>
           </motion.div>
@@ -136,41 +170,15 @@ function MiniRecipesContent({
           <MiniRecipeSkeleton />
         ) : !isLoading && recipes.length === 0 ? (
           <div className="text-default-500 flex h-full items-center justify-center text-base">
-            No recipes found.
+            {t("noRecipesFound")}
           </div>
         ) : (
           <Virtuoso
+            computeItemKey={(_, recipe) => recipe.id}
             data={recipes}
             endReached={loadMore}
-            itemContent={(_, recipe) => {
-              const subtitle = (recipe.description?.trim() || "").slice(0, 140);
-
-              return (
-                <SlotDropdown
-                  ariaLabel="Choose slot"
-                  onSelectSlot={(slot) => handlePlan(recipe, slot)}
-                >
-                  <div className="hover:bg-default-100 flex cursor-pointer items-start gap-3 rounded-md px-2 py-2">
-                    <div className="bg-default-200 relative h-20 w-20 shrink-0 overflow-hidden rounded-md">
-                      {recipe.image && (
-                        <Image
-                          removeWrapper
-                          alt={recipe.name}
-                          className="h-full w-full object-cover"
-                          src={recipe.image}
-                        />
-                      )}
-                    </div>
-                    <div className="flex min-w-0 flex-col">
-                      <div className="truncate text-base font-medium">{recipe.name}</div>
-                      {subtitle && (
-                        <div className="text-default-500 truncate text-base">{subtitle}</div>
-                      )}
-                    </div>
-                  </div>
-                </SlotDropdown>
-              );
-            }}
+            increaseViewportBy={{ top: 100, bottom: 100 }}
+            itemContent={(_, recipe) => <MiniRecipeItem recipe={recipe} onPlan={handlePlan} />}
             overscan={200}
             style={{ height: "100%" }}
           />
@@ -181,8 +189,10 @@ function MiniRecipesContent({
 }
 
 export default function MiniRecipes({ open, onOpenChange, date }: MiniRecipesProps) {
+  const t = useTranslations("calendar.panel");
+
   return (
-    <Panel open={open} title="Add Recipe" onOpenChange={onOpenChange}>
+    <Panel open={open} title={t("addRecipe")} onOpenChange={onOpenChange}>
       {open && <MiniRecipesContent date={date} onOpenChange={onOpenChange} />}
     </Panel>
   );
