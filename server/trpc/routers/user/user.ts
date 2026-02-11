@@ -18,6 +18,7 @@ import {
   clearUserAvatar,
   getHouseholdForUser,
   getApiKeysForUser,
+  getUserById,
   getUserAllergies,
   updateUserAllergies,
   getAllergiesForUsers,
@@ -26,7 +27,7 @@ import {
 } from "@/server/db";
 import { householdEmitter } from "@/server/trpc/routers/households/emitter";
 import { SERVER_CONFIG } from "@/config/env-config-server";
-import { deleteAvatarByFilename } from "@/server/startup/image-cleanup";
+import { deleteAvatarByFilename } from "@/server/startup/media-cleanup";
 import { UpdateUserAllergiesSchema } from "@/server/db/zodSchemas/user-allergies";
 
 /**
@@ -35,14 +36,15 @@ import { UpdateUserAllergiesSchema } from "@/server/db/zodSchemas/user-allergies
 const get = authedProcedure.query(async ({ ctx }) => {
   log.debug({ userId: ctx.user.id }, "Getting user settings");
 
+  const freshUser = await getUserById(ctx.user.id);
   const apiKeys = await getApiKeysForUser(ctx.user.id);
 
   return {
     user: {
       id: ctx.user.id,
-      email: ctx.user.email,
-      name: ctx.user.name,
-      image: ctx.user.image,
+      email: freshUser?.email ?? ctx.user.email,
+      name: freshUser?.name ?? ctx.user.name,
+      image: freshUser?.image ?? ctx.user.image,
     },
     apiKeys: apiKeys.map((k) => ({
       id: k.id,

@@ -11,7 +11,7 @@ import {
   Kbd,
   addToast,
 } from "@heroui/react";
-import { PhotoIcon, XMarkIcon, SparklesIcon } from "@heroicons/react/20/solid";
+import { PhotoIcon, XMarkIcon, SparklesIcon } from "@heroicons/react/16/solid";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 
@@ -176,7 +176,12 @@ export default function ImportFromImageModal({ isOpen, onOpenChange }: ImportFro
   }, [files, onOpenChange]);
 
   return (
-    <Modal isOpen={isOpen} size="lg" onOpenChange={onOpenChange}>
+    <Modal
+      classNames={{ wrapper: "z-[1100]", backdrop: "z-[1099]" }}
+      isOpen={isOpen}
+      size="lg"
+      onOpenChange={onOpenChange}
+    >
       <ModalContent>
         {() => (
           <>

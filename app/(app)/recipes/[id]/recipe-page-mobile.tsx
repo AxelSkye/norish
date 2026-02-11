@@ -3,7 +3,10 @@ import {
   FireIcon,
   ArrowTopRightOnSquareIcon,
   ArrowLeftIcon,
-} from "@heroicons/react/20/solid";
+  SunIcon,
+  MoonIcon,
+  CakeIcon,
+} from "@heroicons/react/16/solid";
 import { Card, CardBody, Chip, Divider, Link } from "@heroui/react";
 import { useTranslations } from "next-intl";
 
@@ -27,6 +30,7 @@ import MediaCarousel, { buildMediaItems } from "@/components/shared/media-carous
 import { useFavoritesQuery, useFavoritesMutation } from "@/hooks/favorites";
 import { useRatingQuery, useRatingsMutation } from "@/hooks/ratings";
 import { NutritionSection } from "@/components/recipes/nutrition-card";
+import { MOBILE_RECIPE_MEDIA_HEIGHT_STYLE } from "@/app/(app)/recipes/[id]/recipe-layout-constants";
 
 export default function RecipePageMobile() {
   const {
@@ -49,9 +53,15 @@ export default function RecipePageMobile() {
   const mediaItems = buildMediaItems(recipe);
 
   return (
-    <div className="flex w-full flex-col overflow-x-hidden">
+    <div
+      className="flex w-full flex-col"
+      style={{ marginTop: "calc(-1.5rem - env(safe-area-inset-top))" }}
+    >
       {/* Hero Image/Video Carousel */}
-      <div className="relative w-full overflow-hidden" style={{ height: "18rem" }}>
+      <div
+        className="relative w-full overflow-hidden"
+        style={{ height: MOBILE_RECIPE_MEDIA_HEIGHT_STYLE }}
+      >
         <DoubleTapContainer className="h-full w-full" onDoubleTap={handleToggleFavorite}>
           <MediaCarousel
             aspectRatio="4/3"
@@ -65,14 +75,14 @@ export default function RecipePageMobile() {
         {recipe?.author && (
           <div
             className="absolute left-4 z-50"
-            style={{ top: `calc(1rem + env(safe-area-inset-top))` }}
+            style={{ top: `calc(3.5rem + env(safe-area-inset-top))` }}
           >
             <AuthorChip image={recipe.author.image} name={recipe.author.name} />
           </div>
         )}
 
         {/* Heart button - bottom right (always visible) */}
-        <div className="absolute right-4 bottom-4 z-50">
+        <div className="absolute right-4 bottom-8 z-50">
           <HeartButton
             showBackground
             isFavorite={isFavorite}
@@ -123,6 +133,28 @@ export default function RecipePageMobile() {
             <p className="text-base leading-relaxed">
               <SmartMarkdownRenderer text={recipe.description} />
             </p>
+          )}
+
+          {/* Categories */}
+          {recipe.categories.length > 0 && (
+            <div className="text-default-500 flex flex-wrap items-center gap-4 text-base">
+              {recipe.categories.map((category) => {
+                const IconComponent =
+                  {
+                    Breakfast: FireIcon,
+                    Lunch: SunIcon,
+                    Dinner: MoonIcon,
+                    Snack: CakeIcon,
+                  }[category] || SunIcon;
+
+                return (
+                  <span key={category} className="flex items-center gap-1">
+                    <IconComponent className="h-4 w-4" />
+                    {category}
+                  </span>
+                );
+              })}
+            </div>
           )}
 
           {/* Time info */}
@@ -185,6 +217,21 @@ export default function RecipePageMobile() {
           </div>
 
           <Divider />
+
+          {/* Notes */}
+          {recipe.notes && (
+            <>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-lg font-semibold">{t("notes")}</h2>
+                </div>
+                <div>
+                  <SmartMarkdownRenderer text={recipe.notes} />
+                </div>
+              </div>
+              <Divider />
+            </>
+          )}
 
           {/* Steps Section */}
           <div className="space-y-4">

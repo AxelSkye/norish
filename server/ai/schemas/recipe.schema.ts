@@ -12,6 +12,10 @@ export const recipeExtractionSchema = z
     "@type": z.literal("Recipe").describe("Schema.org type"),
     name: z.string().describe("Recipe name/title"),
     description: z.string().nullable().describe("Brief recipe description"),
+    notes: z
+      .string()
+      .nullable()
+      .describe("Additional recipe notes only when recipe content explicitly includes them"),
     recipeYield: z
       .union([z.string(), z.number(), z.null()])
       .describe("Number of servings or yield description"),
@@ -44,6 +48,10 @@ export const recipeExtractionSchema = z
       .array(z.string())
       .nullable()
       .describe("Tags including detected allergens (e.g., gluten, dairy, nuts)"),
+    categories: z
+      .array(z.string())
+      .min(1)
+      .describe("Meal categories - MUST include at least one of: Breakfast, Lunch, Dinner, Snack"),
     nutrition: nutritionEstimationSchema,
   })
   .strict();

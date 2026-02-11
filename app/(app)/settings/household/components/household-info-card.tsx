@@ -14,7 +14,8 @@ import {
   ModalBody,
   ModalFooter,
 } from "@heroui/react";
-import { HomeIcon, ArrowRightIcon } from "@heroicons/react/16/solid";
+import { HomeIcon } from "@heroicons/react/24/outline";
+import { ArrowLeftStartOnRectangleIcon } from "@heroicons/react/16/solid";
 import { useTranslations } from "next-intl";
 
 import { useHouseholdSettingsContext } from "../context";
@@ -63,7 +64,7 @@ export default function HouseholdInfoCard() {
           <div className="flex justify-end">
             <Button
               color="danger"
-              startContent={<ArrowRightIcon className="h-4 w-4" />}
+              startContent={<ArrowLeftStartOnRectangleIcon className="h-4 w-4" />}
               variant="flat"
               onPress={() => setShowLeaveModal(true)}
             >
@@ -74,7 +75,11 @@ export default function HouseholdInfoCard() {
       </Card>
 
       {/* Leave Household Modal */}
-      <Modal isOpen={showLeaveModal} onOpenChange={setShowLeaveModal}>
+      <Modal
+        classNames={{ wrapper: "z-[1100]", backdrop: "z-[1099]" }}
+        isOpen={showLeaveModal}
+        onOpenChange={setShowLeaveModal}
+      >
         <ModalContent>
           {(onClose) => (
             <>

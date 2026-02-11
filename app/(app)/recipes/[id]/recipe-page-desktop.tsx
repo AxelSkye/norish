@@ -6,7 +6,10 @@ import {
   ClockIcon,
   ArrowTopRightOnSquareIcon,
   ArrowLeftIcon,
-} from "@heroicons/react/20/solid";
+  SunIcon,
+  MoonIcon,
+  CakeIcon,
+} from "@heroicons/react/16/solid";
 import { Card, CardBody, CardHeader, Chip } from "@heroui/react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
@@ -100,6 +103,28 @@ export default function RecipePageDesktop() {
                 <p className="text-base leading-relaxed">
                   <SmartMarkdownRenderer text={recipe.description} />
                 </p>
+              )}
+
+              {/* Categories */}
+              {recipe.categories.length > 0 && (
+                <div className="text-default-500 flex flex-wrap items-center gap-x-4 gap-y-2 text-base">
+                  {recipe.categories.map((category) => {
+                    const IconComponent =
+                      {
+                        Breakfast: FireIcon,
+                        Lunch: SunIcon,
+                        Dinner: MoonIcon,
+                        Snack: CakeIcon,
+                      }[category] || SunIcon;
+
+                    return (
+                      <span key={category} className="flex items-center gap-1">
+                        <IconComponent className="h-4 w-4" />
+                        {category}
+                      </span>
+                    );
+                  })}
+                </div>
               )}
 
               {/* Meta info row */}
@@ -198,6 +223,18 @@ export default function RecipePageDesktop() {
               </div>
             )}
           </div>
+
+          {/* Notes */}
+          {recipe.notes && (
+            <Card className="bg-content1 rounded-2xl shadow-md">
+              <CardHeader className="flex items-center justify-between px-6 pt-6">
+                <h2 className="text-lg font-semibold">{t("notes")}</h2>
+              </CardHeader>
+              <CardBody className="p-6 pt-0">
+                <SmartMarkdownRenderer text={recipe.notes} />
+              </CardBody>
+            </Card>
+          )}
 
           {/* Steps Card (below image in right column) */}
           <Card className="bg-content1 rounded-2xl shadow-md">

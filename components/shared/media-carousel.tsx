@@ -1,13 +1,15 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { Button } from "@heroui/react";
-import { ChevronLeftIcon, ChevronRightIcon } from "@heroicons/react/24/outline";
+import { ChevronLeftIcon, ChevronRightIcon } from "@heroicons/react/16/solid";
 import { AnimatePresence, motion } from "motion/react";
 import NextImage from "next/image";
+import { useTranslations } from "next-intl";
 
 import VideoPlayer from "@/components/shared/video-player";
 import ImageLightbox from "@/components/shared/image-lightbox";
+import { FallbackPlaceholder, useImageErrors } from "@/components/shared/fallback-image";
 
 export interface MediaItem {
   type: "image" | "video";
@@ -91,10 +93,13 @@ export default function MediaCarousel({
   const [direction, setDirection] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
+  const { handleImageError, hasError } = useImageErrors();
+  const lightboxOpenTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Touch handling state
   const [touchStart, setTouchStart] = useState<number | null>(null);
   const [touchEnd, setTouchEnd] = useState<number | null>(null);
+  const t = useTranslations("recipes.carousel");
 
   // Sort items: order ascending, then videos before images
   const sortedItems = useMemo(() => {
@@ -115,6 +120,19 @@ export default function MediaCarousel({
         alt: `Recipe media ${item.id || ""}`,
       }));
   }, [sortedItems]);
+
+  const clearPendingLightboxOpen = useCallback(() => {
+    if (lightboxOpenTimeoutRef.current) {
+      clearTimeout(lightboxOpenTimeoutRef.current);
+      lightboxOpenTimeoutRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      clearPendingLightboxOpen();
+    };
+  }, [clearPendingLightboxOpen]);
 
   const handleNext = useCallback(() => {
     setDirection(1);
@@ -150,19 +168,35 @@ export default function MediaCarousel({
     }
   };
 
-  const handleItemClick = (item: MediaItem) => {
-    if (item.type === "image") {
-      // Find the index of this image in the lightboxImages array
-      // We need to match by src (or id if available, but src is reliable here)
+  const openLightboxForItem = useCallback(
+    (item: MediaItem, itemIndex: number) => {
       const imgIndex = lightboxImages.findIndex((img) => img.src === item.src);
 
       if (imgIndex !== -1) {
         setLightboxIndex(imgIndex);
         setLightboxOpen(true);
       }
-      onImageClick?.(currentIndex);
+      onImageClick?.(itemIndex);
+    },
+    [lightboxImages, onImageClick]
+  );
+
+  const handleItemClick = (item: MediaItem, itemIndex: number, clickDetail: number) => {
+    if (item.type !== "image") {
+      return;
     }
-    // Videos handle their own clicks/taps via VideoPlayer controls
+
+    if (clickDetail > 1 || lightboxOpenTimeoutRef.current) {
+      clearPendingLightboxOpen();
+
+      return;
+    }
+
+    clearPendingLightboxOpen();
+    lightboxOpenTimeoutRef.current = setTimeout(() => {
+      openLightboxForItem(item, itemIndex);
+      lightboxOpenTimeoutRef.current = null;
+    }, 250);
   };
 
   const aspectRatioClass = {
@@ -194,7 +228,7 @@ export default function MediaCarousel({
       <div
         className={`bg-default-200 relative w-full overflow-hidden ${roundedClass} ${aspectRatioClass} ${className} flex items-center justify-center`}
       >
-        <span className="text-default-500 font-medium">No media available</span>
+        <span className="text-default-500 font-medium">{t("noMediaAvailable")}</span>
       </div>
     );
   }
@@ -215,16 +249,18 @@ export default function MediaCarousel({
               poster={item.thumbnail || undefined}
               src={item.src}
             />
+          ) : hasError(item.src) ? (
+            <FallbackPlaceholder />
           ) : (
             <div
               className="group relative h-full w-full cursor-pointer"
               role="button"
               tabIndex={0}
-              onClick={() => handleItemClick(item)}
+              onClick={(e) => handleItemClick(item, 0, e.detail)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
-                  handleItemClick(item);
+                  openLightboxForItem(item, 0);
                 }
               }}
             >
@@ -234,6 +270,7 @@ export default function MediaCarousel({
                 alt="Recipe image"
                 className="object-cover transition-transform duration-500 group-hover:scale-105"
                 src={item.src}
+                onError={() => handleImageError(item.src)}
               />
             </div>
           )}
@@ -278,16 +315,18 @@ export default function MediaCarousel({
                 poster={sortedItems[currentIndex].thumbnail || undefined}
                 src={sortedItems[currentIndex].src}
               />
+            ) : hasError(sortedItems[currentIndex].src) ? (
+              <FallbackPlaceholder />
             ) : (
               <div
                 className="relative h-full w-full cursor-pointer"
                 role="button"
                 tabIndex={0}
-                onClick={() => handleItemClick(sortedItems[currentIndex])}
+                onClick={(e) => handleItemClick(sortedItems[currentIndex], currentIndex, e.detail)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
-                    handleItemClick(sortedItems[currentIndex]);
+                    openLightboxForItem(sortedItems[currentIndex], currentIndex);
                   }
                 }}
               >
@@ -297,6 +336,7 @@ export default function MediaCarousel({
                   alt={`Recipe media ${currentIndex + 1}`}
                   className="object-cover"
                   src={sortedItems[currentIndex].src}
+                  onError={() => handleImageError(sortedItems[currentIndex].src)}
                 />
               </div>
             )}

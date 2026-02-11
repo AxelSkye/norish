@@ -20,7 +20,8 @@ import {
   ModalFooter,
   addToast,
 } from "@heroui/react";
-import { UserGroupIcon, UserMinusIcon, ShieldCheckIcon } from "@heroicons/react/24/outline";
+import { UserGroupIcon } from "@heroicons/react/24/outline";
+import { UserMinusIcon, ShieldCheckIcon } from "@heroicons/react/16/solid";
 import { useTranslations } from "next-intl";
 
 import { useHouseholdSettingsContext } from "../context";
@@ -168,7 +169,11 @@ export default function MembersCard() {
       </Card>
 
       {/* Kick User Modal */}
-      <Modal isOpen={showKickModal} onOpenChange={setShowKickModal}>
+      <Modal
+        classNames={{ wrapper: "z-[1100]", backdrop: "z-[1099]" }}
+        isOpen={showKickModal}
+        onOpenChange={setShowKickModal}
+      >
         <ModalContent>
           {(onClose) => (
             <>
@@ -191,7 +196,11 @@ export default function MembersCard() {
       </Modal>
 
       {/* Transfer Admin Modal */}
-      <Modal isOpen={showTransferModal} onOpenChange={setShowTransferModal}>
+      <Modal
+        classNames={{ wrapper: "z-[1100]", backdrop: "z-[1099]" }}
+        isOpen={showTransferModal}
+        onOpenChange={setShowTransferModal}
+      >
         <ModalContent>
           {(onClose) => (
             <>

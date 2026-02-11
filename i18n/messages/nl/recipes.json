@@ -33,6 +33,7 @@
     "viewOriginal": "Bekijk origineel recept",
     "ingredients": "Ingrediënten",
     "steps": "Stappen",
+    "notes": "Notities",
     "addToGroceries": "Toevoegen aan boodschappen",
     "ratingPrompt": "Wat vond je van dit recept?",
     "notFound": "Recept niet gevonden",
@@ -51,6 +52,7 @@
     "delete": "Verwijder",
     "autoTag": "Auto-tag",
     "autoTagging": "Tags genereren...",
+    "autoCategorize": "Auto Categoriseren",
     "detectAllergies": "Detecteer Allergieën",
     "detectingAllergies": "Allergieën detecteren...",
     "estimateNutrition": "Schat Voedingswaarde",
@@ -63,6 +65,11 @@
     "ariaLabel": "Converteer meetsysteem",
     "toMetric": "Converteer naar metrisch",
     "toUS": "Converteer naar US"
+  },
+  "deleteModal": {
+    "title": "Recept verwijderen",
+    "confirmMessage": "Weet je zeker dat je \"{recipeName}\" wilt verwijderen?",
+    "warning": "Deze actie kan niet ongedaan worden gemaakt."
   },
   "form": {
     "createTitle": "Recept Maken",
@@ -83,9 +90,19 @@
     "recipeNamePlaceholder": "bijv. Chocolate Chip Cookies",
     "description": "Beschrijving",
     "descriptionPlaceholder": "Een korte beschrijving van wat dit recept speciaal maakt...",
+    "notes": "Notities",
+    "notesPlaceholder": "Voeg tips voor de voorbereiding, aanpassingen of serveersuggesties toe voor dit recept...",
     "ingredientsHelp": "Typ ingrediënten zoals \"2 kopjes bloem\" - we verwerken automatisch hoeveelheden en eenheden.",
     "instructionsHelp": "Schrijf duidelijke stapsgewijze instructies. Druk op Enter om naar de volgende stap te gaan.",
     "tagsHelp": "Typ tags en klik op suggesties om toe te voegen. Geselecteerde tags zijn blauw, nieuwe tags hebben een omstippelde rand.",
+    "tagsAndCategories": "Tags & Categorieën",
+    "categoriesHelp": "Selecteer maaltijdcategorieën voor dit recept.",
+    "category": {
+      "breakfast": "Ontbijt",
+      "lunch": "Lunch",
+      "dinner": "Diner",
+      "snack": "Snack"
+    },
     "calories": "Calorieën",
     "fat": "Vet (g)",
     "carbs": "Koolhydraten (g)",
@@ -115,9 +132,12 @@
   },
   "carousel": {
     "noImageAvailable": "Geen afbeelding beschikbaar",
+    "noMediaAvailable": "Geen media beschikbaar",
     "videoPlayer": {
       "mute": "Dempen",
-      "unmute": "Geluid aan"
+      "unmute": "Geluid aan",
+      "fullscreen": "Volledig scherm",
+      "exitFullscreen": "Volledig scherm sluiten"
     }
   },
   "validation": {

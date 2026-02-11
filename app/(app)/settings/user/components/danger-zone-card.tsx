@@ -12,7 +12,7 @@ import {
   ModalBody,
   ModalFooter,
 } from "@heroui/react";
-import { TrashIcon } from "@heroicons/react/24/outline";
+import { TrashIcon } from "@heroicons/react/16/solid";
 import { useTranslations } from "next-intl";
 
 import { useUserSettingsContext } from "../context";
@@ -49,7 +49,11 @@ export default function DangerZoneCard() {
       </Card>
 
       {/* Delete Account Confirmation */}
-      <Modal isOpen={showAccountDeleteModal} onOpenChange={setShowAccountDeleteModal}>
+      <Modal
+        classNames={{ wrapper: "z-[1100]", backdrop: "z-[1099]" }}
+        isOpen={showAccountDeleteModal}
+        onOpenChange={setShowAccountDeleteModal}
+      >
         <ModalContent>
           {(onClose) => (
             <>

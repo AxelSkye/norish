@@ -4,9 +4,13 @@ import React, { useEffect, useState } from "react";
 import { Dropdown, DropdownTrigger, DropdownMenu, DropdownItem } from "@heroui/dropdown";
 import { Avatar } from "@heroui/avatar";
 import { Button } from "@heroui/react";
-import { ArrowDownTrayIcon, ArrowUpIcon, PlusIcon } from "@heroicons/react/16/solid";
-import { EllipsisVerticalIcon } from "@heroicons/react/20/solid";
-import { UsersIcon } from "@heroicons/react/24/outline";
+import {
+  ArrowDownTrayIcon,
+  ArrowLeftStartOnRectangleIcon,
+  PlusIcon,
+  EllipsisVerticalIcon,
+  Cog6ToothIcon,
+} from "@heroicons/react/16/solid";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 
@@ -24,6 +28,16 @@ interface NavbarUserMenuProps {
   trigger?: TriggerVariant;
 }
 
+function withQueryParams(url: string, params: Record<string, string | number>) {
+  const [path, hash = ""] = url.split("#");
+  const separator = path.includes("?") ? "&" : "?";
+  const query = Object.entries(params)
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
+    .join("&");
+
+  return `${path}${separator}${query}${hash ? `#${hash}` : ""}`;
+}
+
 export default function NavbarUserMenu({ trigger = "avatar" }: NavbarUserMenuProps) {
   const t = useTranslations("navbar.userMenu");
   const { user, userMenuOpen: _userMenuOpen, setUserMenuOpen, signOut } = useUserContext();
@@ -31,13 +45,16 @@ export default function NavbarUserMenu({ trigger = "avatar" }: NavbarUserMenuPro
   const [showUrlModal, setShowUrlModal] = useState(false);
   const [imageError, setImageError] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
+  const [avatarRefreshKey, setAvatarRefreshKey] = useState(() => Date.now());
   const { currentVersion, latestVersion, updateAvailable, releaseUrl } = useVersionQuery();
 
-  // Reset image error and retry count when user changes
   useEffect(() => {
-    setImageError(false);
-    setRetryCount(0);
-  }, [user?.image]);
+    if (user) {
+      setImageError(false);
+      setRetryCount(0);
+      setAvatarRefreshKey(Date.now());
+    }
+  }, [user]);
 
   const handleImageError = () => {
     if (retryCount < 2) {
@@ -66,7 +83,11 @@ export default function NavbarUserMenu({ trigger = "avatar" }: NavbarUserMenuPro
                   onError: handleImageError,
                 }}
                 name={user?.name || user?.email || "U"}
-                src={!imageError && user?.image ? `${user.image}?retry=${retryCount}` : undefined}
+                src={
+                  !imageError && user?.image
+                    ? withQueryParams(user.image, { retry: retryCount, v: avatarRefreshKey })
+                    : undefined
+                }
               />
               {updateAvailable && (
                 <span className="absolute -top-0.5 -right-0.5 flex h-3 w-3">
@@ -109,7 +130,7 @@ export default function NavbarUserMenu({ trigger = "avatar" }: NavbarUserMenuPro
             className={`py-3 ${cssButtonPill}`}
             startContent={
               <span className="text-default-500">
-                <PlusIcon className="size-4" />
+                <PlusIcon className="size-5" />
               </span>
             }
             onPress={() => {
@@ -130,7 +151,7 @@ export default function NavbarUserMenu({ trigger = "avatar" }: NavbarUserMenuPro
             className={`py-3 ${cssButtonPill}`}
             startContent={
               <span className="text-default-500">
-                <ArrowDownTrayIcon className="size-4" />
+                <ArrowDownTrayIcon className="size-5" />
               </span>
             }
             onPress={() => {
@@ -155,7 +176,7 @@ export default function NavbarUserMenu({ trigger = "avatar" }: NavbarUserMenuPro
             href="/settings?tab=user"
             startContent={
               <span className="text-default-500">
-                <UsersIcon className="size-4" />
+                <Cog6ToothIcon className="size-5" />
               </span>
             }
             onPress={() => setUserMenuOpen(false)}
@@ -173,7 +194,7 @@ export default function NavbarUserMenu({ trigger = "avatar" }: NavbarUserMenuPro
             className={`text-danger-400 py-3 ${cssButtonPillDanger}`}
             startContent={
               <span className="text-danger-400">
-                <ArrowUpIcon className="size-4" />
+                <ArrowLeftStartOnRectangleIcon className="size-5" />
               </span>
             }
             onPress={() => {
